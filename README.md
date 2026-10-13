@@ -18,6 +18,7 @@ On utilise [uv](https://docs.astral.sh/uv/) avec Python 3.12.
 ```bash
 uv sync                                    # crée .venv avec les versions de uv.lock
 uv run python scripts/verif_donnees.py     # 1re vérification des données Binance
+uv run python Emma_script.py               # collecte Bybit (moins de 5 min)
 uv run jupyter lab                         # ouvrir rapport.ipynb
 ```
 
@@ -40,7 +41,7 @@ scripts/
   verif_donnees.py   couverture et fréquence des fichiers metrics et fundingRate
 data/
   raw/binance/{metrics,fundingRate,klines,premiumIndexKlines,spot_klines}/<SYMBOLE>/*.parquet
-  raw/bybit/{funding,open_interest}/<SYMBOLE>/
+  raw/bybit/{funding,open_interest,klines}/<SYMBOLE>/<SYMBOLE>-<série>.parquet
   raw/fng/
   interim/       panel horaire
   processed/     panel + cible + variables
@@ -65,7 +66,7 @@ df = load_raw("binance", "metrics", "BTCUSDT")
 | Binance `klines` 1h | OHLCV du perpétuel | 1 h | idem |
 | Binance `premiumIndexKlines` 1h | basis perpétuel/indice | 1 h | idem |
 | Binance spot `klines` 1h | OHLCV spot | 1 h | idem |
-| Bybit API v5 | funding, open interest | 1 h | REST paginé |
+| Bybit API v5 | funding, open interest, bougies (high, close, volumes) | par paiement ; 1 h | REST paginé, sans clé |
 | alternative.me | Fear & Greed | quotidien | REST |
 
 ### Constats de la première vérification (5 octobre 2026)
@@ -74,6 +75,29 @@ df = load_raw("binance", "metrics", "BTCUSDT")
 - **Les ratios long/short manquent sur une grande partie de 2022.** Sur BTCUSDT et SOLUSDT, les ratios gros traders et tous comptes sont vides du 2022-01-01 au 2022-12-16, sauf entre le 28 mai et le 20 juin environ. Le ratio taker est vide avant le 2022-05-14. L'open interest, lui, est complet. Conséquence : il faut soit démarrer l'échantillon fin 2022, soit garder 2022 pour les seules variables d'open interest et de funding. Ce choix est à documenter dans le rapport.
 - Le funding est versé toutes les 8 h sur BTC et SOL pour les mois testés. La colonne `funding_interval_hours` sert à ramener chaque taux en horaire.
 - Les fichiers spot récents (2025) ont des timestamps en microsecondes. `collecte._to_utc` détecte l'unité automatiquement.
+
+### Collecte Bybit (12 octobre 2026)
+
+Bybit sert de source de robustesse : vérifier que les résultats ne sont pas propres aux clients de Binance. Trois séries, pour BTCUSDT, ETHUSDT et SOLUSDT, du 2022-01-01 au 2026-09-30 :
+
+| Série | Point d'accès | Colonnes gardées | Lignes par crypto | Usage |
+|---|---|---|---|---|
+| `funding` | `/v5/market/funding/history` | `calc_time`, `last_funding_rate`, `funding_interval_hours` | 5 202 (SOL : 5 562) | prédicteur |
+| `open_interest` | `/v5/market/open-interest`, pas 1 h | `create_time`, `open_interest`, `single_open_interest` | 41 616 | C2 et prédicteur |
+| `klines` | `/v5/market/kline`, intervalle 60 | `open_time`, `high`, `close`, `volume`, `quote_volume` | 41 616 | C1 et prédicteurs de prix |
+
+Méthode (`Emma_script.py`) :
+- L'API renvoie au plus 200 points par requête (1 000 pour les bougies), du plus récent au plus ancien. La boucle remonte donc le temps : la fin de chaque requête est placée juste avant le point le plus ancien de la page précédente.
+- Bybit renvoie ses erreurs avec un code HTTP 200 : on contrôle `retCode`. Les erreurs passagères du serveur (« svc error ») sont retentées jusqu'à 5 fois.
+- Nettoyage : conversion du texte en nombres, des millisecondes en dates UTC, suppression des doublons entre pages, tri chronologique. Les colonnes portent les mêmes noms que chez Binance pour réutiliser le code du panel.
+- L'open interest est pris au pas horaire plutôt qu'à 5 minutes (moins de 200 requêtes par crypto contre environ 2 000), ce qui suffit pour une vérification.
+- Un parquet par crypto et par série. Relancer le script ne retélécharge pas les fichiers déjà présents.
+
+Constats :
+- Aucune heure manquante : 41 616 lignes, soit 1 734 jours × 24 h, pour l'open interest et les bougies des trois cryptos.
+- **Le funding de SOL est passé toutes les 2 h du 10 novembre au 20 décembre 2022**, après la faillite de FTX, contre 8 h le reste du temps. La colonne `funding_interval_hours`, calculée comme l'écart entre deux paiements, permet de ramener chaque taux en horaire.
+- `open_interest` compte les deux côtés du marché et vaut le double de `single_open_interest`. Pour comparer au `sum_open_interest` de Binance, utiliser `single_open_interest`. Pour C2, qui mesure une variation relative, les deux donnent le même résultat.
+- Bybit ne fournit pas le volume acheteur agressif dans ses bougies : la condition C3 ne peut pas être refaite sur Bybit.
 
 ## Répartition
 
