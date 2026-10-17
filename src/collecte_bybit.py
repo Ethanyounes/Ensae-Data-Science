@@ -3,7 +3,7 @@
 Bybit sert de source de robustesse : vérifier que les résultats ne sont pas
 propres aux clients de Binance. Pas de clé d'API nécessaire.
 
-Lancement depuis la racine du dépôt : uv run python Emma_script.py
+Lancement depuis la racine du dépôt : uv run python -m scripts.telecharger_bybit
 """
 
 import time
@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-from src.config import BYBIT_BASE_URL, END, START, SYMBOLS, raw_path
+from src.config import BYBIT_BASE_URL, END, START, raw_path
 
 # Description de chaque série Bybit :
 #   chemin : point d'accès de l'API
@@ -31,7 +31,7 @@ BYBIT_KINDS = {
 
 # Les bougies arrivent sous forme de listes sans noms : ordre donné par la doc Bybit.
 # Noms alignés sur ceux de Binance pour réutiliser le même code de panel.
-KLINE_COLS = ["open_time", "open", "high", "low", "close", "volume", "quote_volume"]
+BYBIT_KLINE_COLS = ["open_time", "open", "high", "low", "close", "volume", "quote_volume"]
 
 UNE_HEURE_MS = 3600 * 1000
 
@@ -112,7 +112,7 @@ def download_bybit(kind: str, symbol: str, start: str = START, end: str = END) -
 def clean_bybit(lignes: list, kind: str) -> pd.DataFrame:
     """Met les lignes brutes au format du projet : noms, types numériques, dates UTC."""
     if kind == "klines":
-        df = pd.DataFrame(lignes, columns=KLINE_COLS)
+        df = pd.DataFrame(lignes, columns=BYBIT_KLINE_COLS)
         df = df[["open_time", "high", "close", "volume", "quote_volume"]]
         colonne_temps = "open_time"
     elif kind == "funding":
@@ -156,15 +156,3 @@ def save_bybit(df: pd.DataFrame, kind: str, symbol: str) -> None:
     fichier = bybit_file(kind, symbol)
     fichier.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(fichier, index=False)
-
-
-if __name__ == "__main__":
-    for symbol in SYMBOLS:
-        for kind in BYBIT_KINDS:
-            if bybit_file(kind, symbol).exists():  # reprise : déjà téléchargé
-                df = pd.read_parquet(bybit_file(kind, symbol))
-            else:
-                df = download_bybit(kind, symbol)
-                save_bybit(df, kind, symbol)
-            print(f"{symbol:9} {kind:14} {len(df):6} lignes, "
-                  f"{df.iloc[0, 0]} -> {df.iloc[-1, 0]}")
