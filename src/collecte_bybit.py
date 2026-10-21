@@ -37,12 +37,19 @@ UNE_HEURE_MS = 3600 * 1000
 
 
 def _to_ms(date: str) -> int:
-    """Date "AAAA-MM-JJ" (UTC) -> millisecondes depuis 1970, le format de Bybit."""
+    """Date "AAAA-MM-JJ" (UTC) -> millisecondes depuis 1970, le format de Bybit.
+
+    L'API Bybit attend un nombre de millisecondes depuis le 1er janvier 1970, et non une date.
+    """
     return int(pd.Timestamp(date, tz="UTC").timestamp() * 1000)
 
 
 def _timestamp(ligne, kind: str) -> int:
-    """Horodatage (ms) d'une ligne brute renvoyée par Bybit."""
+    """Horodatage (ms) d'une ligne brute renvoyée par Bybit.
+
+    Bybit ne place pas la date au même endroit selon la série : cette fonction la
+    récupère sous forme d'entier quel que soit le format.
+    """
     if kind == "klines":
         return int(ligne[0])  # première valeur de la liste
     if kind == "funding":
@@ -110,7 +117,10 @@ def download_bybit(kind: str, symbol: str, start: str = START, end: str = END) -
 
 
 def clean_bybit(lignes: list, kind: str) -> pd.DataFrame:
-    """Met les lignes brutes au format du projet : noms, types numériques, dates UTC."""
+    """Met les lignes brutes au format du projet : noms, types numériques, dates UTC.
+
+    Ce qui arrive de Bybit est une liste de textes : on la convertit en tableau pandas.
+    """
     if kind == "klines":
         df = pd.DataFrame(lignes, columns=BYBIT_KLINE_COLS)
         df = df[["open_time", "high", "close", "volume", "quote_volume"]]
@@ -152,7 +162,10 @@ def bybit_file(kind: str, symbol: str) -> Path:
 
 
 def save_bybit(df: pd.DataFrame, kind: str, symbol: str) -> None:
-    """Écrit la série en parquet (le dossier est créé si besoin)."""
+    """Écrit la série en parquet (le dossier est créé si besoin).
+
+    Le parquet est plus léger qu'un CSV et conserve les types d'une lecture à l'autre.
+    """
     fichier = bybit_file(kind, symbol)
     fichier.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(fichier, index=False)

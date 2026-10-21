@@ -19,6 +19,7 @@ On utilise [uv](https://docs.astral.sh/uv/) avec Python 3.12.
 uv sync                                    # crée .venv avec les versions de uv.lock
 uv run python -m scripts.telecharger_binance   # collecte Binance (relançable)
 uv run python -m scripts.telecharger_bybit     # collecte Bybit (moins de 5 min)
+uv run python -m scripts.telecharger_fng       # indice Fear & Greed (une requête)
 uv run jupyter lab                         # ouvrir rapport.ipynb
 ```
 
@@ -33,6 +34,7 @@ src/
   config.py      chemins (raw_path), univers de cryptos, période, URL      ← tout le monde importe d'ici
   collecte_binance.py  archives Binance : téléchargement, checksum, parquet
   collecte_bybit.py    API Bybit v5 : funding, open interest, bougies
+  collecte_fng.py      indice Fear & Greed (alternative.me), quotidien
   -- à venir --
   panel.py       agrégation horaire, nettoyage                              (A)
   cible.py       définition des squeezes                                    (B)
@@ -42,6 +44,7 @@ src/
 scripts/
   telecharger_binance.py   télécharge toutes les archives Binance (SYMBOLS × types)
   telecharger_bybit.py     télécharge toutes les séries Bybit
+  telecharger_fng.py       télécharge l'indice Fear & Greed
 data/
   raw/binance/{metrics,fundingRate,klines,premiumIndexKlines,spot_klines}/<SYMBOLE>/*.parquet
   raw/bybit/{funding,open_interest,klines}/<SYMBOLE>/<SYMBOLE>-<série>.parquet

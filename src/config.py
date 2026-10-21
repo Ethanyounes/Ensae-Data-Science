@@ -40,3 +40,4 @@ def raw_path(source: str, kind: str, symbol: str) -> Path:
 # Adresses des sources (sans "/" final)
 BINANCE_BASE_URL = "https://data.binance.vision/data"
 BYBIT_BASE_URL = "https://api.bybit.com"
+FNG_URL = "https://api.alternative.me/fng/"
