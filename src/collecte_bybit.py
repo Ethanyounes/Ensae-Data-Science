@@ -122,8 +122,9 @@ def clean_bybit(lignes: list, kind: str) -> pd.DataFrame:
     Ce qui arrive de Bybit est une liste de textes : on la convertit en tableau pandas.
     """
     if kind == "klines":
+        # Toutes les colonnes sont gardées : data/raw/ reste fidèle à la source,
+        # le tri se fera dans le panel
         df = pd.DataFrame(lignes, columns=BYBIT_KLINE_COLS)
-        df = df[["open_time", "high", "close", "volume", "quote_volume"]]
         colonne_temps = "open_time"
     elif kind == "funding":
         # La colonne symbol est retirée : la crypto est déjà dans le chemin du fichier

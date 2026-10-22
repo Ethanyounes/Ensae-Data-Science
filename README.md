@@ -72,7 +72,7 @@ df = load_binance("BTCUSDT", "metrics")
 | Binance `klines` 1h | OHLCV du perpétuel | 1 h | idem |
 | Binance `premiumIndexKlines` 1h | basis perpétuel/indice | 1 h | idem |
 | Binance spot `klines` 1h | OHLCV spot | 1 h | idem |
-| Bybit API v5 | funding, open interest, bougies (high, close, volumes) | par paiement ; 1 h | REST paginé, sans clé |
+| Bybit API v5 | funding, open interest, bougies OHLCV | par paiement ; 1 h | REST paginé, sans clé |
 | alternative.me | Fear & Greed | quotidien | REST |
 
 ### Constats de la première vérification (5 octobre 2026)
@@ -90,7 +90,7 @@ Bybit sert de source de robustesse : vérifier que les résultats ne sont pas pr
 |---|---|---|---|---|
 | `funding` | `/v5/market/funding/history` | `calc_time`, `last_funding_rate`, `funding_interval_hours` | 5 202 (SOL : 5 562) | prédicteur |
 | `open_interest` | `/v5/market/open-interest`, pas 1 h | `create_time`, `open_interest`, `single_open_interest` | 41 616 | C2 et prédicteur |
-| `klines` | `/v5/market/kline`, intervalle 60 | `open_time`, `high`, `close`, `volume`, `quote_volume` | 41 616 | C1 et prédicteurs de prix |
+| `klines` | `/v5/market/kline`, intervalle 60 | `open_time`, `open`, `high`, `low`, `close`, `volume`, `quote_volume` | 41 616 | C1 et prédicteurs de prix |
 
 Méthode (`src/collecte_bybit.py`) :
 - L'API renvoie au plus 200 points par requête (1 000 pour les bougies), du plus récent au plus ancien. La boucle remonte donc le temps : la fin de chaque requête est placée juste avant le point le plus ancien de la page précédente.
@@ -104,6 +104,53 @@ Constats :
 - **Le funding de SOL est passé toutes les 2 h du 10 novembre au 20 décembre 2022**, après la faillite de FTX, contre 8 h le reste du temps. La colonne `funding_interval_hours`, calculée comme l'écart entre deux paiements, permet de ramener chaque taux en horaire.
 - `open_interest` compte les deux côtés du marché et vaut le double de `single_open_interest`. Pour comparer au `sum_open_interest` de Binance, utiliser `single_open_interest`. Pour C2, qui mesure une variation relative, les deux donnent le même résultat.
 - Bybit ne fournit pas le volume acheteur agressif dans ses bougies : la condition C3 ne peut pas être refaite sur Bybit.
+- Une crypto absente de Bybit, ou cotée sous un autre nom (`1000SHIBUSDT` chez Binance, `SHIB1000USDT` chez Bybit), est signalée puis sautée par `scripts/telecharger_bybit.py`.
+
+### Indice Fear & Greed (alternative.me)
+
+Une seule requête (`limit=0`) renvoie tout l'historique depuis le 2018-02-01 : 3 180 jours au 20 octobre 2026. Tout l'historique est gardé, pas seulement la période d'étude, car les moyennes glissantes ont besoin des jours qui précèdent `START`.
+
+Constats et points de vigilance pour le panel :
+- L'horodatage est en **secondes** (millisecondes chez Binance et Bybit).
+- **4 jours manquent** : du 2018-04-14 au 2018-04-16, et le 2024-10-26. Seul le dernier est dans la période d'étude : il sera comblé par la valeur de la veille.
+- **Risque de fuite d'information** : la valeur datée du jour J (00:00 UTC) est publiée vers minuit UTC, sans garantie qu'elle soit connue à 00:00 précisément. Dans le panel, l'indice sera donc **décalé d'un jour** : à l'heure t du jour J, on utilise la valeur de J−1.
+- `fng_classe` (« Fear », « Greed »…) se déduit de `fng` : elle reste dans les données brutes mais ne sert pas de variable.
+
+## Convention de temps : que représente l'heure t ?
+
+Le panel a une ligne par crypto et par heure t (UTC). **La ligne t contient uniquement ce qui est connu à l'instant t.** Toutes les sources sont ramenées à cette règle avant la fusion, et toute la suite du projet (cible, variables, validation) s'appuie dessus.
+
+### Pourquoi c'est nécessaire
+
+Les sources n'horodatent pas de la même façon. Chez Binance, une bougie `open_time = 14:00` couvre 14:00 à 15:00 : son `close` et son `high` ne sont connus qu'à **15:00**. Un relevé `metrics` daté de 14:05 est connu dès 14:05. Si l'on fusionnait les sources sur leur horodatage brut, la ligne « 14:00 » contiendrait le prix de 15:00 à côté de l'open interest de 14:00. Un modèle pourrait alors « voir » une heure dans le futur, ce qui est une fuite d'information.
+
+### La règle : chaque ligne est datée par la fin de l'heure
+
+La ligne t = 15:00 contient :
+
+| Source | Ce qu'on met dans la ligne t | Transformation |
+|---|---|---|
+| `klines`, `spot_klines` | la bougie 14:00-15:00 : `close` est le prix à 15:00, `high` et `low` les extrêmes entre 14:00 et 15:00 | t = `open_time` + 1 h |
+| `premiumIndexKlines` | la basis de la bougie 14:00-15:00 | t = `open_time` + 1 h |
+| `metrics` : open interest | le dernier relevé dont l'heure est ≤ 15:00 | regroupement des relevés de 14:05 à 15:00 inclus, dernière valeur |
+| `metrics` : ratios long/short et taker | la moyenne des relevés de 14:05 à 15:00 inclus | regroupement fermé à droite, daté par sa borne droite |
+| `fundingRate` | le dernier paiement dont l'heure (arrondie à l'heure) est ≤ 15:00 | report de la dernière valeur connue |
+| Fear & Greed | la valeur de la veille (la valeur du jour J n'est utilisée qu'à partir de J+1 00:00) | date de publication + 1 jour, puis dernière valeur connue |
+
+Hypothèse sur les `metrics` : un relevé daté de 14:05 est supposé connu à 14:05, c'est-à-dire que `create_time` marque la fin de la mesure. Si l'on découvre le contraire, il suffit de décaler les relevés de 5 minutes.
+
+### Conséquences pour la cible et les variables
+
+- **Variables** : elles n'utilisent que les lignes ≤ t (fenêtres glissantes passées). La ligne t elle-même est autorisée, puisqu'elle ne contient que du connu à t.
+- **Cible** : elle n'utilise que les lignes de t+1 h à t+24 h. La bougie de la ligne t+1 h couvre t à t+1 h : c'est bien la première heure après t.
+- **Lien avec les notations de la définition des squeezes** : `Close_{t−1}` et `OI_{t−1}` désignent le dernier prix et le dernier OI connus avant le début de la fenêtre. Ce sont le `close` et l'open interest **de la ligne t**. `max High(t, t+24h]` est le maximum des `high` des lignes t+1 h à t+24 h.
+- **Grille complète** : le panel contient toutes les heures de `START` à `END`. Une heure sans données apparaît comme une ligne de valeurs manquantes au lieu de disparaître.
+
+### Mise en œuvre (pandas)
+
+- bougies : `open_time + pd.Timedelta("1h")` ;
+- relevés à 5 minutes : `resample("1h", closed="right", label="right")` (fermé à droite, daté par la borne droite) ;
+- funding et Fear & Greed : `pd.merge_asof(..., direction="backward")` (dernière valeur dont la date est ≤ t).
 
 ## Répartition
 

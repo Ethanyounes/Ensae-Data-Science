@@ -41,3 +41,14 @@ def raw_path(source: str, kind: str, symbol: str) -> Path:
 BINANCE_BASE_URL = "https://data.binance.vision/data"
 BYBIT_BASE_URL = "https://api.bybit.com"
 FNG_URL = "https://api.alternative.me/fng/"
+
+
+# Stockage S3 du SSPCloud. Le dossier diffusion/ d'un bucket est lisible publiquement :
+# le notebook y lit les données sans identifiants. L'écriture, elle, demande les clés
+# du fichier .env (jamais commité).
+# "or" plutôt qu'une valeur par défaut : la variable peut exister mais être vide
+_endpoint = os.environ.get("AWS_S3_ENDPOINT") or "minio.lab.sspcloud.fr"
+S3_ENDPOINT = "https://" + _endpoint.removeprefix("https://")
+S3_BUCKET = "ethany1"                  # identifiant SSPCloud du bucket de référence du groupe
+S3_PREFIX = "diffusion/ensae-squeeze"  # dossier du projet dans le bucket
+S3_PUBLIC_URL = f"{S3_ENDPOINT}/{S3_BUCKET}/{S3_PREFIX}"
