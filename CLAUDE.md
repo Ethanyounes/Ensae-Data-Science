@@ -27,4 +27,4 @@ La note porte sur les données, l'analyse descriptive, la démarche et la reprod
 - Commits fréquents et PR. Éviter d'éditer le même notebook à plusieurs sur la même branche.
 
 ## Points de données connus
-Les ratios long/short des `metrics` sont manquants du 2022-01-01 au 2022-12-16, sauf entre fin mai et le 20 juin. Le ratio taker manque avant le 2022-05-14. Voir le README.
+Sur BTC, seuls les ratios des gros traders (`ls_top_*`) manquent sur la majeure partie de 2022 (complets à partir du 2022-12-15, sauf un peu de mai-juin). Le ratio global est disponible dès février 2022, le ratio taker dès mi-mai 2022, l'open interest est complet. Voir le README.

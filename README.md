@@ -20,23 +20,27 @@ uv sync                                    # crée .venv avec les versions de uv
 uv run python -m scripts.telecharger_binance   # collecte Binance (relançable)
 uv run python -m scripts.telecharger_bybit     # collecte Bybit (moins de 5 min)
 uv run python -m scripts.telecharger_fng       # indice Fear & Greed (une requête)
-uv run jupyter lab                         # ouvrir rapport.ipynb
+uv run python -m scripts.construire_panel      # panel horaire -> data/interim/panel.parquet
+uv run jupyter lab                             # ouvrir rapport.ipynb
 ```
 
 Sans uv : `pip install -r requirements.txt`, généré par `uv export --no-hashes --no-dev > requirements.txt`.
 
-Les données ne sont pas versionnées (`data/` est dans `.gitignore`). Le dossier se change avec la variable d'environnement `DATA_DIR`. Sur le SSPCloud, les données brutes sont copiées dans le bucket S3 (`S3_BUCKET`), avec la même arborescence.
+Les données ne sont pas versionnées (`data/` est dans `.gitignore`). Le dossier local se change avec la variable d'environnement `DATA_DIR`.
+
+**Données en ligne.** Les données brutes et le panel sont déposés sur le stockage S3 du SSPCloud, dans un dossier public en lecture seule : `https://minio.lab.sspcloud.fr/ethany1/diffusion/ensae-squeeze/`, avec la même arborescence que `data/`. Le notebook les lit sans identifiants (`src.stockage.lire_public`). Pour en déposer de nouvelles, il faut des identifiants SSPCloud dans un fichier `.env` (jamais commité) et lancer Python avec `uv run --env-file .env python ...` (`src.stockage.envoyer`).
 
 ## Structure
 
 ```
 src/
-  config.py      chemins (raw_path), univers de cryptos, période, URL      ← tout le monde importe d'ici
+  config.py            chemins, univers de cryptos, période, URL, S3     ← tout le monde importe d'ici
   collecte_binance.py  archives Binance : téléchargement, checksum, parquet
   collecte_bybit.py    API Bybit v5 : funding, open interest, bougies
   collecte_fng.py      indice Fear & Greed (alternative.me), quotidien
+  stockage.py          envoi sur le S3 du SSPCloud et lecture publique
+  panel.py             nettoyage et panel horaire (une ligne par crypto et par heure t)
   -- à venir --
-  panel.py       agrégation horaire, nettoyage                              (A)
   cible.py       définition des squeezes                                    (B)
   variables.py   construction des variables                                 (C)
   modeles.py     base naïve, logit, LightGBM, validation temporelle
@@ -45,6 +49,7 @@ scripts/
   telecharger_binance.py   télécharge toutes les archives Binance (SYMBOLS × types)
   telecharger_bybit.py     télécharge toutes les séries Bybit
   telecharger_fng.py       télécharge l'indice Fear & Greed
+  construire_panel.py      construit data/interim/panel.parquet et affiche les manquants
 data/
   raw/binance/{metrics,fundingRate,klines,premiumIndexKlines,spot_klines}/<SYMBOLE>/*.parquet
   raw/bybit/{funding,open_interest,klines}/<SYMBOLE>/<SYMBOLE>-<série>.parquet
@@ -75,10 +80,21 @@ df = load_binance("BTCUSDT", "metrics")
 | Bybit API v5 | funding, open interest, bougies OHLCV | par paiement ; 1 h | REST paginé, sans clé |
 | alternative.me | Fear & Greed | quotidien | REST |
 
-### Constats de la première vérification (5 octobre 2026)
+### Constats sur les données Binance (BTCUSDT, 2022-2026)
 
-- Les `metrics` sont bien à 5 minutes, soit 288 lignes par jour. Ils commencent le 2020-09-01 pour BTC et le 2021-12-01 pour SOL.
-- **Les ratios long/short manquent sur une grande partie de 2022.** Sur BTCUSDT et SOLUSDT, les ratios gros traders et tous comptes sont vides du 2022-01-01 au 2022-12-16, sauf entre le 28 mai et le 20 juin environ. Le ratio taker est vide avant le 2022-05-14. L'open interest, lui, est complet. Conséquence : il faut soit démarrer l'échantillon fin 2022, soit garder 2022 pour les seules variables d'open interest et de funding. Ce choix est à documenter dans le rapport.
+- Les `metrics` sont à 5 minutes, soit 288 relevés par jour. Sur BTC, 133 relevés manquent sur 499 392 attendus (un trou de 10 h 30 et trois trous de 15 à 20 min) : 9 heures du panel n'ont aucun relevé.
+- **Seuls les ratios des gros traders manquent sur la majeure partie de 2022**, pas tous les ratios. Part de relevés manquants par mois en 2022 :
+
+  | Variable | Janv. | Févr.-avr. | Mai | Juin | Juil.-nov. | Déc. |
+  |---|---|---|---|---|---|---|
+  | `ls_top_comptes`, `ls_top_positions` (gros traders) | 97 % | 100 % | 86 % | 21 % | 100 % | 44 % (complets à partir du 2022-12-15) |
+  | `ls_global` (tous les comptes) | 60 % | 0 % | 0 % | 0 % | 0 % | 0 % |
+  | `taker_ratio` | 97 % | 100 % | 29 % | 0 % | 0 % | 0 % |
+
+  Le ratio global est donc disponible dès février 2022 et le ratio taker dès la mi-mai 2022. L'open interest est complet. Conséquence : on peut garder 2022 pour l'open interest, le funding, le ratio global et (après mi-mai) le ratio taker, et traiter à part les ratios gros traders, disponibles seulement à partir de mi-décembre 2022. Ce choix est à documenter dans le rapport. À vérifier sur les autres cryptos.
+- Quelques open interest valent 0 (463 relevés sur BTC), ce qui est impossible : ils sont remplacés par des valeurs manquantes dans le panel.
+- Le ratio taker atteint des valeurs extrêmes (jusqu'à 63 sur 5 minutes, pour une médiane de 0,99). Elles sont gardées : elles sont possibles sur 5 minutes de faible volume.
+- Côté bougies : le perpétuel est complet (41 616 heures), il manque 1 heure au spot et 3 jours à l'indice de prime (`basis`).
 - Le funding est versé toutes les 8 h sur BTC et SOL pour les mois testés. La colonne `funding_interval_hours` sert à ramener chaque taux en horaire.
 - Les fichiers spot récents (2025) ont des timestamps en microsecondes. `collecte_binance._to_utc` détecte l'unité automatiquement.
 
