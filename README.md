@@ -39,7 +39,8 @@ src/
   collecte_bybit.py    API Bybit v5 : funding, open interest, bougies
   collecte_fng.py      indice Fear & Greed (alternative.me), quotidien
   stockage.py          envoi sur le S3 du SSPCloud et lecture publique
-  panel.py             nettoyage et panel horaire (une ligne par crypto et par heure t)
+  panel_binance.py     nettoyage et panel horaire (une ligne par crypto et par heure t)
+  panel_bybit.py       panel horaire Bybit et fusion avec le panel Binance
   -- à venir --
   cible.py       définition des squeezes                                    (B)
   variables.py   construction des variables                                 (C)
@@ -49,7 +50,7 @@ scripts/
   telecharger_binance.py   télécharge toutes les archives Binance (SYMBOLS × types)
   telecharger_bybit.py     télécharge toutes les séries Bybit
   telecharger_fng.py       télécharge l'indice Fear & Greed
-  construire_panel.py      construit data/interim/panel.parquet et affiche les manquants
+  construire_panel.py      construit les panels Binance, Bybit et leur fusion, et affiche les manquants
 data/
   raw/binance/{metrics,fundingRate,klines,premiumIndexKlines,spot_klines}/<SYMBOLE>/*.parquet
   raw/bybit/{funding,open_interest,klines}/<SYMBOLE>/<SYMBOLE>-<série>.parquet
@@ -91,16 +92,18 @@ df = load_binance("BTCUSDT", "metrics")
   | `ls_global` (tous les comptes) | 60 % | 0 % | 0 % | 0 % | 0 % | 0 % |
   | `taker_ratio` | 97 % | 100 % | 29 % | 0 % | 0 % | 0 % |
 
-  Le ratio global est donc disponible dès février 2022 et le ratio taker dès la mi-mai 2022. L'open interest est complet. Conséquence : on peut garder 2022 pour l'open interest, le funding, le ratio global et (après mi-mai) le ratio taker, et traiter à part les ratios gros traders, disponibles seulement à partir de mi-décembre 2022. Ce choix est à documenter dans le rapport. À vérifier sur les autres cryptos.
+  Le ratio global est donc disponible dès février 2022 et le ratio taker dès la mi-mai 2022. L'open interest est complet. Conséquence : on peut garder 2022 pour l'open interest, le funding, le ratio global et (après mi-mai) le ratio taker, et traiter à part les ratios gros traders, disponibles seulement à partir de mi-décembre 2022. À vérifier sur les autres cryptos.
+
+  **Décision : la période d'étude commence le 2023-01-01** (`START` dans `config.py`), pour disposer de toutes les variables de positionnement sur toute la période, ratios des gros traders compris. Le panel commence quand même 30 jours plus tôt (`CHAUFFE_JOURS`, soit le 2022-12-02) : ces jours de chauffe servent aux fenêtres glissantes, comme la volatilité sur 30 jours de la cible, mais ils n'entrent pas dans l'analyse. Les fichiers plus anciens de 2022 restent dans `data/raw/` sans être utilisés.
 - Quelques open interest valent 0 (463 relevés sur BTC), ce qui est impossible : ils sont remplacés par des valeurs manquantes dans le panel.
 - Le ratio taker atteint des valeurs extrêmes (jusqu'à 63 sur 5 minutes, pour une médiane de 0,99). Elles sont gardées : elles sont possibles sur 5 minutes de faible volume.
 - Côté bougies : le perpétuel est complet (41 616 heures), il manque 1 heure au spot et 3 jours à l'indice de prime (`basis`).
 - Le funding est versé toutes les 8 h sur BTC et SOL pour les mois testés. La colonne `funding_interval_hours` sert à ramener chaque taux en horaire.
-- Les fichiers spot récents (2025) ont des timestamps en microsecondes. `collecte_binance._to_utc` détecte l'unité automatiquement.
+- Les fichiers spot récents (2025) ont des timestamps en microsecondes. `collecte_binance.to_utc` détecte l'unité automatiquement.
 
 ### Collecte Bybit (12 octobre 2026)
 
-Bybit sert de source de robustesse : vérifier que les résultats ne sont pas propres aux clients de Binance. Trois séries, pour BTCUSDT, ETHUSDT et SOLUSDT, du 2022-01-01 au 2026-09-30 :
+Bybit sert de source de robustesse : vérifier que les résultats ne sont pas propres aux clients de Binance. Trois séries, pour BTCUSDT, ETHUSDT et SOLUSDT, téléchargées du 2022-01-01 au 2026-09-30 (avant le passage de `START` à 2023) :
 
 | Série | Point d'accès | Colonnes gardées | Lignes par crypto | Usage |
 |---|---|---|---|---|
@@ -132,6 +135,65 @@ Constats et points de vigilance pour le panel :
 - **Risque de fuite d'information** : la valeur datée du jour J (00:00 UTC) est publiée vers minuit UTC, sans garantie qu'elle soit connue à 00:00 précisément. Dans le panel, l'indice sera donc **décalé d'un jour** : à l'heure t du jour J, on utilise la valeur de J−1.
 - `fng_classe` (« Fear », « Greed »…) se déduit de `fng` : elle reste dans les données brutes mais ne sert pas de variable.
 
+## Nettoyage et panel horaire (`src/panel_binance.py`)
+
+Le panel (`data/interim/panel.parquet`) a une ligne par crypto et par heure t, du 2022-12-02 01:00 (chauffe comprise) au 2026-10-01 00:00 : 33 576 heures par crypto.
+
+| Choix | Décision | Raison |
+|---|---|---|
+| Période | 2023-01-01 au 2026-09-30, plus 30 jours de chauffe | ratios des gros traders absents avant mi-décembre 2022 ; la chauffe sert aux fenêtres glissantes |
+| Pas de temps | horaire, ligne t = ce qui est connu à t | pas de temps des bougies et de la cible ; pas de fuite d'information (voir la convention ci-dessous) |
+| `metrics` (5 min) → 1 h | open interest : dernier relevé de l'heure ; ratios : moyenne des relevés | l'open interest est un niveau, les ratios des mesures sur 5 minutes |
+| Open interest nul | remplacé par une valeur manquante | impossible : erreur d'enregistrement |
+| Ratio taker extrême (jusqu'à 63) | gardé | possible sur 5 minutes de faible volume, notamment pendant un squeeze |
+| Valeurs manquantes | jamais comblées ; une heure absente reste une ligne vide | ne pas inventer de données ; `n_releves` (12 = heure complète) indique la fiabilité de l'heure |
+| Funding | heure de paiement arrondie (16:00:00.007 → 16:00), taux ramené à une heure (`funding_horaire`), chaque heure reçoit le dernier paiement connu | rattacher les paiements à la grille et comparer des intervalles de 8, 4 ou 1 h |
+| Dates | toutes en UTC, en millisecondes | le spot récent est en microsecondes : sans harmonisation, les jointures échouent |
+| Noms | `oi`, `oi_usd`, `ls_top_comptes`, `ls_top_positions`, `ls_global`, `taker_ratio` ; préfixe `spot_` pour le spot | les noms Binance sont trompeurs (`sum_...` pour un ratio) |
+| Colonnes retirées | `ignore`, `close_time`, volumes de l'indice de prime (on garde son close sous le nom `basis`) | toujours vides ou nulles |
+
+Valeurs manquantes dans le panel (BTC, ETH, SOL, chauffe comprise) : 0 % pour les prix, volumes et funding ; 0,03 % pour l'open interest, le ratio global et le ratio taker (un trou de relevés chez Binance) ; 0,14 % pour la basis (3 jours absents) ; 0,9 % pour les ratios des gros traders, presque entièrement pendant la chauffe (2 au 14 décembre 2022). Le funding est versé toutes les 8 h pour les trois cryptos sur toute la période. Entre 15 et 19 heures par crypto ont moins de 12 relevés.
+
+Pas encore dans le panel : l'indice Fear & Greed (à rattacher avec un jour de décalage).
+
+### Panel Bybit et fusion (`src/panel_bybit.py`)
+
+Bybit sert à vérifier que les résultats ne sont pas propres aux clients de Binance. Trois fichiers dans `data/interim/` :
+
+| Fichier | Contenu |
+|---|---|
+| `panel.parquet` | panel Binance (référence de l'analyse) |
+| `panel_bybit.parquet` | panel Bybit, mêmes heures t, mêmes noms de colonnes |
+| `panel_binance_bybit.parquet` | panel Binance complété des colonnes Bybit, suffixe `_bybit` (`close_bybit`, `oi_bybit`…), fusion sur la crypto et l'heure t |
+
+Choix pour le panel Bybit :
+- **Même convention de temps que Binance**, vérifiée sur les données : les bougies Bybit sont datées par leur début (prix identiques à Binance à 0,01 % près pour une même `open_time`), donc t = `open_time` + 1 h. L'open interest Bybit est un relevé instantané : ses variations sont corrélées à celles de Binance à la même heure (0,36 à 0,44) mais plus du tout avec une heure de décalage (0,07). Il est donc connu à son heure.
+- **Open interest** : `single_open_interest` (un seul côté du marché, comme Binance), renommé `oi`.
+- **Funding** : même traitement que Binance (`clean_funding`).
+- Une crypto absente de Bybit est simplement absente du panel Bybit ; ses colonnes `_bybit` restent vides dans la fusion.
+
+**Table de correspondance des contrats** (`BYBIT_NOMS` et `nom_bybit` dans `config.py`). Sur les 659 perpétuels USDT de Binance (relevé du 2026-11-02 sur les API des deux plateformes), 464 existent sous le même nom chez Bybit et 5 sous un autre nom :
+
+| Binance | Bybit | Facteur |
+|---|---|---|
+| `1000SATSUSDT` | `10000SATSUSDT` | 10 |
+| `1000SHIBUSDT` | `SHIB1000USDT` | 1 |
+| `TAGUSDT` | `1000TAGUSDT` | 1000 |
+| `TOSHIUSDT` | `1000TOSHIUSDT` | 1000 |
+| `TURBOUSDT` | `1000TURBOUSDT` | 1000 |
+
+Le facteur est la quantité de crypto d'un contrat Bybit divisée par celle d'un contrat Binance. Dans le panel Bybit, les prix sont divisés par ce facteur et les volumes et l'open interest multipliés par lui, pour être exprimés dans l'unité Binance. Les fichiers bruts Bybit sont rangés sous le nom Binance du contrat.
+
+Premières comparaisons (2023-01 à 2026-09) :
+
+| | Corrélation des rendements horaires | Corrélation des variations d'OI | Corrélation du funding | Écart de prix moyen |
+|---|---|---|---|---|
+| BTC | 0,9996 | 0,44 | 0,78 | 0,013 % |
+| ETH | 0,9997 | 0,36 | 0,78 | 0,013 % |
+| SOL | 0,9996 | 0,37 | 0,93 | 0,018 % |
+
+Les prix sont quasiment identiques : les deux sources sont bien alignées dans le temps. Le positionnement (open interest, funding) est commun aux deux plateformes mais pas identique : chaque plateforme a ses propres clients.
+
 ## Convention de temps : que représente l'heure t ?
 
 Le panel a une ligne par crypto et par heure t (UTC). **La ligne t contient uniquement ce qui est connu à l'instant t.** Toutes les sources sont ramenées à cette règle avant la fusion, et toute la suite du projet (cible, variables, validation) s'appuie dessus.
@@ -160,7 +222,8 @@ Hypothèse sur les `metrics` : un relevé daté de 14:05 est supposé connu à 1
 - **Variables** : elles n'utilisent que les lignes ≤ t (fenêtres glissantes passées). La ligne t elle-même est autorisée, puisqu'elle ne contient que du connu à t.
 - **Cible** : elle n'utilise que les lignes de t+1 h à t+24 h. La bougie de la ligne t+1 h couvre t à t+1 h : c'est bien la première heure après t.
 - **Lien avec les notations de la définition des squeezes** : `Close_{t−1}` et `OI_{t−1}` désignent le dernier prix et le dernier OI connus avant le début de la fenêtre. Ce sont le `close` et l'open interest **de la ligne t**. `max High(t, t+24h]` est le maximum des `high` des lignes t+1 h à t+24 h.
-- **Grille complète** : le panel contient toutes les heures de `START` à `END`. Une heure sans données apparaît comme une ligne de valeurs manquantes au lieu de disparaître.
+- **Période de chauffe** : le panel commence `CHAUFFE_JOURS` (30) jours avant `START`, pour que les fenêtres glissantes soient complètes dès la première heure étudiée. On calcule la cible et les variables sur tout le panel, puis on ne garde que les heures à partir de `START` : `panel.loc[START:]`. Si une variable utilise une fenêtre plus longue que 30 jours, il faut augmenter `CHAUFFE_JOURS`.
+- **Grille complète** : le panel contient toutes les heures de `DEBUT_DONNEES` à `END`. Une heure sans données apparaît comme une ligne de valeurs manquantes au lieu de disparaître.
 
 ### Mise en œuvre (pandas)
 

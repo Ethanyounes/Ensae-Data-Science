@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Projet ENSAE 2A (groupe de 3, rendu début décembre 2026) : prédire un short squeeze à 24 h sur les perpétuels USDT Binance (25 cryptos, 2022-2026) à partir du positionnement (funding, OI, ratios long/short, ratio taker). Hypothèses : H1 (shorts informés) contre H2 (shorts fragiles). Réponse statistique (PR-AUC face à une base naïve et à un modèle « prix seuls ») et réponse économique (backtest après frais et funding).
+Projet ENSAE 2A (groupe de 3, rendu début décembre 2026) : prédire un short squeeze à 24 h sur les perpétuels USDT Binance (25 cryptos, 2023-01-01 au 2026-09-30) à partir du positionnement (funding, OI, ratios long/short, ratio taker). Hypothèses : H1 (shorts informés) contre H2 (shorts fragiles). Réponse statistique (PR-AUC face à une base naïve et à un modèle « prix seuls ») et réponse économique (backtest après frais et funding).
 
 La note porte sur les données, l'analyse descriptive, la démarche et la reproductibilité. Le modèle n'est pas noté pour lui-même. `rapport.ipynb` doit tourner sans erreur depuis un environnement vierge.
 
@@ -11,6 +11,7 @@ La note porte sur les données, l'analyse descriptive, la démarche et la reprod
 - Données brutes : parquet, un fichier par archive Binance, timestamps en UTC.
 - Pas de fuite d'information : la cible n'utilise que ce qui se passe après t, les variables que ce qui précède t (fenêtres glissantes passées). Validation temporelle avec un trou de 24 h. Jamais d'accuracy.
 - Code et commentaires en français. Une branche et une PR par tâche.
+- Style : écrire un code simple, qui se comprend en le lisant, comme l'écrirait un étudiant soigneux, plutôt qu'un code parfait. Des noms explicites plutôt que des commentaires ; peu de commentaires, seulement pour expliquer un choix qui ne se voit pas dans le code. Docstrings courtes (une ou deux lignes). Pas de vérifications défensives ni d'abstractions qui ne servent pas le projet.
 
 ## Cible (valeurs de base)
 - **C1** : max High(t, t+24h] / Close_{t-1} − 1 ≥ max(3·σ_30j·√24, 5 %).

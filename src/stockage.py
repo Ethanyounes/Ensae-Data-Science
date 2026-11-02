@@ -1,8 +1,6 @@
-"""Échanges avec le stockage S3 du SSPCloud.
+"""Envoi des données sur le S3 du SSPCloud et lecture publique.
 
-Écriture (envoi des données) : demande les identifiants du fichier .env.
-    uv run --env-file .env python ...
-Lecture : par l'URL publique du dossier diffusion/, sans identifiants.
+L'envoi demande les identifiants du fichier .env : uv run --env-file .env python ...
 """
 
 from pathlib import Path
@@ -14,29 +12,20 @@ from src.config import S3_BUCKET, S3_ENDPOINT, S3_PREFIX, S3_PUBLIC_URL
 
 
 def connexion_s3() -> s3fs.S3FileSystem:
-    """Connexion au S3 du SSPCloud.
-
-    Les clés (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN) sont lues
-    automatiquement dans les variables d'environnement : elles n'apparaissent jamais dans le code.
-    """
+    """Connexion au S3 (les clés sont lues dans les variables d'environnement)."""
     return s3fs.S3FileSystem(client_kwargs={"endpoint_url": S3_ENDPOINT})
 
 
 def chemin_s3(chemin_relatif: str) -> str:
-    """Chemin complet dans le bucket : "raw/x.parquet" -> "ethany1/diffusion/ensae-squeeze/raw/x.parquet"."""
+    """Par exemple "raw/x.parquet" -> "ethany1/diffusion/ensae-squeeze/raw/x.parquet"."""
     return f"{S3_BUCKET}/{S3_PREFIX}/{chemin_relatif}"
 
 
 def envoyer(chemin_local: Path, chemin_relatif: str) -> None:
-    """Envoie un fichier ou un dossier entier (avec ses sous-dossiers) sur le S3."""
-    fs = connexion_s3()
-    fs.put(str(chemin_local), chemin_s3(chemin_relatif), recursive=Path(chemin_local).is_dir())
+    """Envoie un fichier ou un dossier entier sur le S3."""
+    connexion_s3().put(str(chemin_local), chemin_s3(chemin_relatif), recursive=Path(chemin_local).is_dir())
 
 
 def lire_public(chemin_relatif: str) -> pd.DataFrame:
-    """Lit un parquet du dossier public diffusion/, sans identifiants.
-
-    C'est la fonction qu'utilise le notebook : n'importe qui peut la lancer.
-    Exemple : lire_public("interim/panel.parquet")
-    """
+    """Lit un parquet du S3 sans identifiants, par exemple lire_public("interim/panel.parquet")."""
     return pd.read_parquet(f"{S3_PUBLIC_URL}/{chemin_relatif}")

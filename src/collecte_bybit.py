@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-from src.config import BYBIT_BASE_URL, END, START, raw_path
+from src.config import BYBIT_BASE_URL, DEBUT_DONNEES, END, raw_path
 
 # Description de chaque série Bybit :
 #   chemin : point d'accès de l'API
@@ -93,7 +93,7 @@ def _requete_bybit(kind: str, symbol: str, debut_ms: int, fin_ms: int) -> list:
     return data["result"]["list"]
 
 
-def download_bybit(kind: str, symbol: str, start: str = START, end: str = END) -> pd.DataFrame:
+def download_bybit(kind: str, symbol: str, start: str = DEBUT_DONNEES, end: str = END) -> pd.DataFrame:
     """Télécharge une série Bybit sur [start, end] et renvoie un DataFrame trié en UTC.
 
     Comme les réponses vont du plus récent au plus ancien, la boucle remonte le

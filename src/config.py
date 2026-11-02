@@ -1,54 +1,57 @@
-"""Configuration du projet : chemins des données, période d'étude et univers de cryptos.
-
-Tous les modules importent leurs chemins et leurs paramètres d'ici, pour qu'un
-changement (de dossier, de période ou de cryptos) se fasse en une seule ligne.
-"""
+"""Chemins, période d'étude, cryptos et adresses utilisés par tout le projet."""
 
 import os
+from datetime import date, timedelta
 from pathlib import Path
 
-# Racine du dépôt, calculée à partir de ce fichier (src/config.py) et non du
-# dossier courant : le notebook et les scripts trouvent ainsi les mêmes fichiers.
-ROOT_DIR = Path(__file__).resolve().parent.parent
+ROOT_DIR = Path(__file__).resolve().parent.parent  # racine du dépôt, d'où que l'on lance le code
 
-# Dossier des données, remplaçable par la variable d'environnement DATA_DIR
-# (utile sur le SSPCloud). Path(...) car os.environ renvoie une chaîne.
 DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT_DIR / "data"))
 RAW_DIR = DATA_DIR / "raw"              # fichiers téléchargés, jamais modifiés
-INTERIM_DIR = DATA_DIR / "interim"      # panel horaire nettoyé et fusionné
+INTERIM_DIR = DATA_DIR / "interim"      # panel horaire
 PROCESSED_DIR = DATA_DIR / "processed"  # panel + cible + variables
 
-# Période d'étude (dates incluses, UTC)
-START = "2022-01-01"
+# Début en 2023 : avant mi-décembre 2022, les ratios des gros traders manquent (voir README)
+START = "2023-01-01"
 END = "2026-09-30"
 
-# Univers de cryptos (contrats perpétuels USDT de Binance).
-# À compléter jusqu'à 25 une fois le critère de sélection choisi en groupe.
+# Période de chauffe : les jours avant START dont ont besoin les fenêtres glissantes
+# (sigma sur 30 jours dans la cible). Ces heures sont dans le panel mais pas dans l'analyse.
+CHAUFFE_JOURS = 30
+DEBUT_DONNEES = str(date.fromisoformat(START) - timedelta(days=CHAUFFE_JOURS))
+
+# À compléter jusqu'à 25 cryptos
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 
 
 def raw_path(source: str, kind: str, symbol: str) -> Path:
-    """Dossier des données brutes d'une source, d'un type et d'une crypto.
-
-    Exemple : raw_path("binance", "metrics", "BTCUSDT")
-    -> data/raw/binance/metrics/BTCUSDT
-    Le dossier n'est pas créé ici : c'est à la fonction qui écrit de le faire.
-    """
+    """Dossier des données brutes, par exemple data/raw/binance/metrics/BTCUSDT."""
     return RAW_DIR / source / kind / symbol
 
 
-# Adresses des sources (sans "/" final)
+# Contrats dont le nom diffère chez Bybit (relevé le 2026-11-02 sur les API des deux plateformes).
+# Le facteur est la quantité de crypto d'un contrat Bybit divisée par celle d'un contrat Binance :
+# 1000SATSUSDT vaut 1 000 SATS, 10000SATSUSDT en vaut 10 000, donc son prix est 10 fois plus haut.
+BYBIT_NOMS = {
+    "1000SATSUSDT": ("10000SATSUSDT", 10),
+    "1000SHIBUSDT": ("SHIB1000USDT", 1),
+    "TAGUSDT": ("1000TAGUSDT", 1000),
+    "TOSHIUSDT": ("1000TOSHIUSDT", 1000),
+    "TURBOUSDT": ("1000TURBOUSDT", 1000),
+}
+
+
+def nom_bybit(symbol: str) -> tuple[str, int]:
+    """Nom Bybit d'un contrat Binance et facteur de quantité (le même nom et 1 le plus souvent)."""
+    return BYBIT_NOMS.get(symbol, (symbol, 1))
+
+
 BINANCE_BASE_URL = "https://data.binance.vision/data"
 BYBIT_BASE_URL = "https://api.bybit.com"
 FNG_URL = "https://api.alternative.me/fng/"
 
-
-# Stockage S3 du SSPCloud. Le dossier diffusion/ d'un bucket est lisible publiquement :
-# le notebook y lit les données sans identifiants. L'écriture, elle, demande les clés
-# du fichier .env (jamais commité).
-# "or" plutôt qu'une valeur par défaut : la variable peut exister mais être vide
-_endpoint = os.environ.get("AWS_S3_ENDPOINT") or "minio.lab.sspcloud.fr"
-S3_ENDPOINT = "https://" + _endpoint.removeprefix("https://")
-S3_BUCKET = "ethany1"                  # identifiant SSPCloud du bucket de référence du groupe
-S3_PREFIX = "diffusion/ensae-squeeze"  # dossier du projet dans le bucket
+# Stockage S3 du SSPCloud : le dossier diffusion/ est lisible par tous, sans identifiants
+S3_ENDPOINT = "https://minio.lab.sspcloud.fr"
+S3_BUCKET = "ethany1"
+S3_PREFIX = "diffusion/ensae-squeeze"
 S3_PUBLIC_URL = f"{S3_ENDPOINT}/{S3_BUCKET}/{S3_PREFIX}"
