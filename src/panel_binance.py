@@ -8,6 +8,7 @@ import pandas as pd
 
 from src.collecte_binance import load_binance
 from src.config import DEBUT_DONNEES, END, INTERIM_DIR
+from src.panel_fng import ajouter_fng
 
 PANEL_FILE = INTERIM_DIR / "panel.parquet"
 
@@ -86,6 +87,9 @@ def build_panel_crypto(symbol: str) -> pd.DataFrame:
     funding = clean_funding(load_binance(symbol, "fundingRate"))
     panel = pd.merge_asof(panel.reset_index(), funding, left_on="t", right_on="t_funding")
     panel = panel.set_index("t")
+
+    # Indice Fear & Greed : chaque heure t reçoit la valeur de la veille (voir src/panel_fng.py)
+    panel = ajouter_fng(panel)
 
     panel.insert(0, "symbol", symbol)
     return panel
