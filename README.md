@@ -60,7 +60,8 @@ src/
   collecte_fng.py      indice Fear & Greed (alternative.me), quotidien
   stockage.py          envoi sur le S3 du SSPCloud et lecture publique
   panel_binance.py     nettoyage et panel horaire (une ligne par crypto et par heure t)
-  panel_bybit.py       panel horaire Bybit et fusion avec le panel Binance
+  panel_bybit.py       panel horaire Bybit, contrôles de cohérence et fusion avec le panel Binance
+  panel_fng.py         nettoyage de l'indice Fear & Greed et rattachement au panel horaire
   -- à venir --
   cible.py             définition des squeezes                            (B)
   variables.py         construction des variables                         (C)
@@ -71,7 +72,7 @@ scripts/
   telecharger_binance.py   télécharge toutes les archives Binance (SYMBOLS × types)
   telecharger_bybit.py     télécharge toutes les séries Bybit
   telecharger_fng.py       télécharge l'indice Fear & Greed
-  construire_panel.py      construit les panels Binance, Bybit et leur fusion, et affiche les manquants
+  construire_panel.py      construit les panels Binance, Bybit et leur fusion, et affiche manquants et contrôles
 data/
   raw/binance/{metrics,fundingRate,klines,premiumIndexKlines,spot_klines}/<SYMBOLE>/*.parquet
   raw/bybit/{funding,open_interest,klines}/<SYMBOLE>/<SYMBOLE>-<série>.parquet
@@ -157,9 +158,9 @@ Bybit sert à vérifier que les résultats ne sont pas propres aux clients de Bi
 
 Une seule requête (`limit=0`) renvoie tout l'historique depuis le 2018-02-01 : 3 180 jours au 20 octobre 2026. Tout l'historique est gardé, car les moyennes glissantes ont besoin des jours qui précèdent `START`.
 
-- **Horodatage en secondes** (millisecondes chez Binance et Bybit).
-- **4 jours manquent** : du 2018-04-14 au 2018-04-16, et le 2024-10-26. Seul le dernier est dans la période d'étude : il sera comblé par la valeur de la veille.
-- **Risque de fuite d'information** : la valeur du jour J (datée 00:00 UTC) est publiée vers minuit UTC, sans garantie qu'elle soit connue à 00:00 précisément. Dans le panel, l'indice sera donc **décalé d'un jour** : à l'heure t du jour J, on utilise la valeur de J−1.
+- **Horodatage en secondes** (millisecondes chez Binance et Bybit) : il est ramené en millisecondes dans le panel.
+- **4 jours manquent** : du 2018-04-14 au 2018-04-16, et le 2024-10-26. Seul le dernier est dans la période d'étude (voir [son traitement dans le panel](#indice-fear--greed-dans-le-panel-srcpanel_fngpy)).
+- **Risque de fuite d'information** : la valeur du jour J (datée 00:00 UTC) est publiée vers minuit UTC, sans garantie qu'elle soit connue à 00:00 précisément. Dans le panel, l'indice est donc **décalé d'un jour** : à l'heure t du jour J, on utilise la valeur de J−1.
 - **`fng_classe`** (« Fear », « Greed »…) se déduit de `fng` : elle reste dans les données brutes mais ne sert pas de variable.
 
 ## Convention de temps
@@ -214,6 +215,7 @@ Le panel (`data/interim/panel.parquet`) a une ligne par crypto et par heure t, d
 | Ratio taker extrême (jusqu'à 63) | gardé | possible sur 5 minutes de faible volume, notamment pendant un squeeze |
 | Valeurs manquantes | jamais comblées ; une heure absente reste une ligne vide | ne pas inventer de données ; `n_releves` (12 = heure complète) indique la fiabilité de l'heure |
 | Funding | heure de paiement arrondie (16:00:00.007 → 16:00), taux ramené à une heure (`funding_horaire`), chaque heure reçoit le dernier paiement connu | rattacher les paiements à la grille et comparer des intervalles de 8, 4 ou 1 h |
+| Fear & Greed | chaque heure reçoit la valeur de la veille (`fng`) et la date de cette valeur (`fng_date`) | pas de fuite d'information (voir [plus bas](#indice-fear--greed-dans-le-panel-srcpanel_fngpy)) |
 | Dates | toutes en UTC, en millisecondes | le spot récent est en microsecondes : sans harmonisation, les jointures échouent |
 | Noms | `oi`, `oi_usd`, `ls_top_comptes`, `ls_top_positions`, `ls_global`, `taker_ratio` ; préfixe `spot_` pour le spot | les noms Binance sont trompeurs (`sum_...` pour un ratio) |
 | Colonnes retirées | `ignore`, `close_time`, volumes de l'indice de prime (on garde son close sous le nom `basis`) | toujours vides ou nulles |
