@@ -228,10 +228,16 @@ Le panel (`data/interim/panel.parquet`) a une ligne par crypto et par heure t, d
 | open interest, ratio global, ratio taker | 0,03 % | un trou de relevés chez Binance |
 | basis | 0,14 % | 3 jours absents |
 | ratios des gros traders | 0,9 % | presque entièrement pendant la chauffe (2 au 14 décembre 2022) |
+| Fear & Greed | 0 % | le jour absent (2024-10-26) reçoit la dernière valeur connue |
 
 Le funding est versé toutes les 8 h pour les trois cryptos sur toute la période. Entre 15 et 19 heures par crypto ont moins de 12 relevés.
 
-Pas encore dans le panel : l'indice Fear & Greed (à rattacher avec un jour de décalage).
+### Indice Fear & Greed dans le panel (`src/panel_fng.py`)
+
+L'indice est ajouté au panel Binance par `ajouter_fng`, appelée dans `build_panel_crypto`.
+- **Nettoyage** : on garde la date et la valeur (`fng_classe` se déduit de `fng`). Une valeur hors de [0, 100] ou une date en double serait supprimée ; `controles_fng` n'en trouve aucune.
+- **Décalage d'un jour** : la valeur datée du jour J devient connue à J+1 00:00 (`t_fng` = date + 1 jour). Chaque heure t reçoit ensuite la dernière valeur connue (`merge_asof`).
+- **Jour manquant** : le 2024-10-26 n'a pas de valeur, donc les heures du 2024-10-27 reçoivent celle du 2024-10-25. Ce report n'invente pas de donnée : c'est la dernière valeur connue à t, comme pour le funding. `fng_date` indique de quel jour date la valeur utilisée.
 
 ### Panel Bybit et fusion (`src/panel_bybit.py`)
 
@@ -247,7 +253,32 @@ Trois fichiers dans `data/interim/` :
 - **Même convention de temps que Binance**, vérifiée sur les données. Les bougies Bybit sont datées par leur début (prix identiques à Binance à 0,01 % près pour une même `open_time`), donc t = `open_time` + 1 h. L'open interest Bybit est un relevé instantané : ses variations sont corrélées à celles de Binance à la même heure (0,36 à 0,44), mais plus du tout avec une heure de décalage (0,07). Il est donc connu à son heure.
 - **Open interest** : `single_open_interest` (un seul côté du marché, comme Binance), renommé `oi`.
 - **Funding** : même traitement que Binance (`clean_funding`).
+- **Doublons** : une bougie ou un relevé d'open interest en double sur la même heure est supprimé.
+- **Open interest nul ou négatif** : remplacé par une valeur manquante, comme chez Binance.
 - **Crypto absente de Bybit** : absente du panel Bybit ; ses colonnes `_bybit` restent vides dans la fusion.
+
+**Contrôles de cohérence** (`controles_bybit`, chauffe comprise). La fonction signale sans rien corriger. Résultat identique pour BTC, ETH et SOL, sur 33 576 heures chacune :
+
+| Contrôle | Heures en défaut |
+|---|---|
+| bougie absente | 0 |
+| open interest absent | 1 : la dernière heure de la grille (2026-10-01 00:00), après la fin du téléchargement |
+| funding absent | 0 |
+| ouverture ou clôture hors de l'intervalle [plus bas, plus haut] | 0 |
+| prix nul ou négatif | 0 |
+| volume nul | 0 |
+| open interest identique 3 heures de suite (série figée) | 0 |
+
+**Valeurs extrêmes** (`extremes_bybit`, période d'étude). Elles sont gardées : ce sont de vrais événements de marché, et un squeeze en est justement un.
+
+| | Plus forte baisse horaire de l'OI | Plus forte variation horaire du prix | Funding horaire min / max | Heures à funding négatif |
+|---|---|---|---|---|
+| BTC | −25,5 % (2025-10-10 22:00) | 6,2 % (2023-04-26 20:00) | −0,0057 % / 0,0141 % | 16,1 % |
+| ETH | −26,4 % (2025-10-10 22:00) | 11,9 % (2025-02-03 02:00) | −0,0147 % / 0,0121 % | 18,1 % |
+| SOL | −22,7 % (2023-06-30 14:00) | 12,9 % (2023-07-14 01:00) | −0,1079 % / 0,0173 % | 26,9 % |
+
+- **La baisse d'OI du 2025-10-10** sur BTC et ETH correspond au krach du 10 octobre 2025, une vague de liquidations de longs pendant une chute des prix. Une baisse d'OI seule ne signale donc pas un squeeze : il faut aussi la hausse (C1) et les achats agressifs (C3).
+- **Le funding le plus négatif de SOL** (2023-01-04 08:00) tombe pendant sa hausse de 10 à 23,7 $ entre le 1er et le 14 janvier 2023 : les shorts payaient cher pour rester en position pendant que le prix montait. C'est un bon exemple de squeeze à montrer dans l'analyse descriptive.
 
 **Table de correspondance des contrats** (`BYBIT_NOMS` et `nom_bybit` dans `config.py`). Sur les 659 perpétuels USDT de Binance (relevé du 2026-11-02 sur les API des deux plateformes), 464 existent sous le même nom chez Bybit et 5 sous un autre nom :
 
@@ -307,7 +338,7 @@ Les prix sont quasiment identiques : les deux sources sont bien alignées dans l
 - **Calendrier** : heure UTC, jour de la semaine, distance au prochain paiement de funding (00 h, 08 h, 16 h).
 - **Profil d'un squeeze** : ampleur du pic, délai avant le pic, baisse de l'open interest.
 - **Sensibilité** : fréquence des squeezes pour chaque variante (k, plancher, δ, horizon).
-- **Exemples** : un ou deux squeezes connus en graphique (prix, open interest, funding, ratio long/short sur ±3 jours).
+- **Exemples** : un ou deux squeezes connus en graphique (prix, open interest, funding, ratio long/short sur ±3 jours). Candidat : SOL du 1er au 14 janvier 2023 (voir les [valeurs extrêmes Bybit](#panel-bybit-et-fusion-srcpanel_bybitpy)).
 
 ### Étape 4 : positionnement et squeezes, première réponse à H1/H2
 
