@@ -36,11 +36,27 @@ def shortsquizzs(t1 : pd.Timestamp, t2 : pd.Timestamp, i):
         if is_shortsquizz(t, i):
             res.append(t)
     return res
+
+panel_cible = panel.copy()
+
+panel_cible["is_shortsquizz"] = [
+    bool(is_shortsquizz(t, symbole))
+    for t, symbole in zip(panel_cible.index, panel_cible["symbol"])
+]
     
 dates_shortsquizz_BTC = shortsquizzs(pd.Timestamp("2023-01-01", tz = "UTC"), pd.Timestamp("2026-09-30", tz = "UTC"), "BTCUSDT")
 dates_compactes_BTC = pd.DatetimeIndex(dates_shortsquizz_BTC).normalize().unique()   
 
 print(dates_compactes_BTC)
+
+"""
+#DatetimeIndex(['2023-01-13 00:00:00+00:00', '2023-01-14 00:00:00+00:00',
+               '2023-01-20 00:00:00+00:00', '2023-10-15 00:00:00+00:00',
+               '2023-10-16 00:00:00+00:00', '2024-02-27 00:00:00+00:00',
+               '2024-02-28 00:00:00+00:00'],
+              dtype='datetime64[us, UTC]', freq=None)
+
+"""
 
 
 
