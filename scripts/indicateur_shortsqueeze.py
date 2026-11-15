@@ -47,16 +47,18 @@ def shortsquizzs(t1 : pd.Timestamp, t2 : pd.Timestamp, i):
             res.append(t)
     return res
 
-panel_cibles = panel.copy()
+if __name__ == "__main__":
 
-diagnostics = pd.DataFrame([is_shortsquizz(t, symbole)
-                            for t, symbole in zip(panel.index, panel["symbol"])],
-                            index=panel.index)
+    panel_cibles = panel.copy()
 
-panel_cibles = pd.concat([panel, diagnostics], axis=1)
+    diagnostics = pd.DataFrame([is_shortsquizz(t, symbole)
+                                for t, symbole in zip(panel.index, panel["symbol"])],
+                                index=panel.index)
 
-PANEL_CIBLE_FILE.parent.mkdir(parents=True, exist_ok=True)
-panel_cibles.to_parquet(PANEL_CIBLE_FILE)
+    panel_cibles = pd.concat([panel, diagnostics], axis=1)
+
+    PANEL_CIBLE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    panel_cibles.to_parquet(PANEL_CIBLE_FILE)
 
 def episodes(l : list):
     """ 
