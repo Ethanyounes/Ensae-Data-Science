@@ -1,5 +1,7 @@
 """Statistiques et graphiques descriptifs appelés par rapport.ipynb."""
 
+from statistics import NormalDist
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -111,3 +113,62 @@ def tableau_cryptos(panel: pd.DataFrame) -> pd.DataFrame:
             "Volume perpétuel / volume spot": crypto["quote_volume"].sum() / crypto["spot_quote_volume"].sum(),
         }
     return pd.DataFrame(lignes).T
+
+
+def queues_rendements(panel: pd.DataFrame) -> pd.DataFrame:
+    """Asymétrie, kurtosis et part des rendements horaires au-delà de 4 écarts-types, face à une loi normale."""
+    lignes = {}
+    for symbole, crypto in panel.groupby("symbol"):
+        rendements = rendements_horaires(crypto)
+        centres_reduits = (rendements - rendements.mean()) / rendements.std()
+        lignes[symbole] = {
+            "Asymétrie": rendements.skew(),
+            "Kurtosis (excès)": rendements.kurt(),
+            "Au-delà de 4 σ (%)": (centres_reduits.abs() > 4).mean() * 100,
+        }
+    lignes["Loi normale"] = {
+        "Asymétrie": 0,
+        "Kurtosis (excès)": 0,
+        "Au-delà de 4 σ (%)": 2 * (1 - NormalDist().cdf(4)) * 100,
+    }
+    return pd.DataFrame(lignes).T
+
+
+def graphique_qqplot(panel: pd.DataFrame) -> None:
+    """QQ-plot des rendements horaires centrés réduits contre une loi normale."""
+    fig, ax = plt.subplots(figsize=(7, 6))
+
+    for symbole, crypto in panel.groupby("symbol"):
+        rendements = rendements_horaires(crypto).dropna()
+        centres_reduits = np.sort((rendements - rendements.mean()) / rendements.std())
+        probabilites = (np.arange(len(centres_reduits)) + 0.5) / len(centres_reduits)
+        quantiles_normaux = [NormalDist().inv_cdf(p) for p in probabilites]
+        ax.plot(quantiles_normaux, centres_reduits, ".", markersize=3, color=COULEURS[symbole], label=symbole)
+
+    ax.axline((0, 0), slope=1, color="grey", linestyle="--", linewidth=1, label="Loi normale")
+    ax.set_xlabel("Quantiles d'une loi normale")
+    ax.set_ylabel("Quantiles des rendements horaires (en écarts-types)")
+    ax.set_title("QQ-plot des rendements horaires")
+    ax.legend()
+    plt.show()
+
+
+def ratio_perp_spot_mensuel(panel: pd.DataFrame) -> pd.DataFrame:
+    """Volume mensuel du perpétuel rapporté au volume spot, une colonne par crypto."""
+    volumes = panel.groupby([panel["symbol"], mois_de_la_bougie(panel)])[["quote_volume", "spot_quote_volume"]].sum()
+    ratio = volumes["quote_volume"] / volumes["spot_quote_volume"]
+    return ratio.unstack("symbol")
+
+
+def graphique_perp_spot(ratio: pd.DataFrame) -> None:
+    """Évolution du rapport volume perpétuel / volume spot."""
+    fig, ax = plt.subplots(figsize=(12, 4.5))
+    for symbole in ratio.columns:
+        ax.plot(pd.to_datetime(ratio.index), ratio[symbole], linewidth=2, color=COULEURS[symbole], label=symbole)
+
+    ax.set_ylim(bottom=0)
+    ax.set_ylabel("Volume perpétuel / volume spot")
+    ax.set_title("Le perpétuel échange plusieurs fois le volume du spot")
+    ax.grid(axis="y", alpha=0.3)
+    ax.legend()
+    plt.show()
