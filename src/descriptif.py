@@ -25,6 +25,8 @@ NOMS_POSITIONNEMENT = {
 # Valeur de référence tracée sur chaque histogramme (0,01 % par 8 h : taux de funding par défaut de Binance)
 REPERES = {"funding_8h": 0.01, "variation_oi_24h": 0, "ls_global": 1, "ls_top_comptes": 1,
            "ls_top_positions": 1, "taker_bougies": 1, "basis": 0}
+EVENEMENTS = {"2024-01-10": "ETF bitcoin au comptant", "2024-11-05": "Élection américaine",
+              "2025-10-10": "Krach du 10 octobre"}
 
 
 def charger_panel() -> pd.DataFrame:
@@ -224,6 +226,13 @@ def position_du_funding(panel: pd.DataFrame) -> pd.DataFrame:
     return parts[["En dessous", "Au taux par défaut", "Au-dessus"]]
 
 
+def medianes_par_an(variables: pd.DataFrame) -> pd.DataFrame:
+    """Médiane de chaque variable de positionnement, par crypto et par année."""
+    annee = mois_de_la_bougie(variables).str[:4].rename("année")
+    medianes = variables.groupby([variables["symbol"], annee]).median()
+    return medianes.rename(columns=NOMS_POSITIONNEMENT)
+
+
 def graphique_distributions(variables: pd.DataFrame) -> None:
     """Histogramme de chaque variable, une courbe par crypto, entre les quantiles à 1 et 99 %."""
     fig, axes = plt.subplots(2, 4, figsize=(18, 8))
@@ -241,5 +250,42 @@ def graphique_distributions(variables: pd.DataFrame) -> None:
     axes.flat[-1].legend(*axes.flat[0].get_legend_handles_labels(), loc="center", fontsize=12)
     axes.flat[-1].axis("off")
     fig.suptitle("Distribution des variables de positionnement (densité, tirets : valeur de référence)")
+    fig.tight_layout()
+    plt.show()
+
+
+def graphique_series(panel: pd.DataFrame, variables: pd.DataFrame) -> None:
+    """Moyennes quotidiennes du prix, de l'open interest, du funding et de deux ratios long/short."""
+    lignes = {
+        "Prix (base 100, échelle log)": panel["close"],
+        "Open interest en USDT (base 100, échelle log)": panel["oi_usd"],
+        "Funding (% par 8 h, axe coupé à −0,06 %)": variables["funding_8h"],
+        "Long/short, tous les comptes": variables["ls_global"],
+        "Long/short, gros traders en positions": variables["ls_top_positions"],
+    }
+    fig, axes = plt.subplots(len(lignes), 1, figsize=(13, 15), sharex=True)
+
+    for ax, (titre, serie) in zip(axes, lignes.items()):
+        for symbole in panel["symbol"].unique():
+            par_jour = serie[panel["symbol"] == symbole].resample("D").mean()
+            if "base 100" in titre:
+                par_jour = 100 * par_jour / par_jour.iloc[0]
+            ax.plot(par_jour.index, par_jour, linewidth=1.2, color=COULEURS[symbole], label=symbole)
+        if "base 100" in titre:
+            ax.set_yscale("log")
+        for date in EVENEMENTS:
+            ax.axvline(pd.Timestamp(date, tz="UTC"), color="grey", linestyle=":", linewidth=1)
+        ax.set_title(titre, loc="left")
+        ax.grid(axis="y", alpha=0.3)
+
+    for date, evenement in EVENEMENTS.items():
+        axes[0].annotate(evenement, (pd.Timestamp(date, tz="UTC"), 1), xycoords=("data", "axes fraction"),
+                         xytext=(3, -12), textcoords="offset points", fontsize=9, color="grey")
+    axes[2].axhline(0.01, color="black", linestyle="--", linewidth=1)
+    # Deux pics de SOL (janvier 2023 et octobre 2025) descendent sous −0,2 % et écraseraient la série
+    axes[2].set_ylim(-0.06, 0.11)
+    axes[3].axhline(1, color="black", linestyle="--", linewidth=1)
+    axes[4].axhline(1, color="black", linestyle="--", linewidth=1)
+    axes[0].legend(loc="lower right")
     fig.tight_layout()
     plt.show()
