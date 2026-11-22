@@ -13,6 +13,19 @@ from src.stockage import lire_public
 COULEURS = {"BTCUSDT": "#2a78d6", "ETHUSDT": "#eb6834", "SOLUSDT": "#1baf7a"}
 HEURES_PAR_AN = 24 * 365
 
+NOMS_POSITIONNEMENT = {
+    "funding_8h": "Funding (% par 8 h)",
+    "variation_oi_24h": "Variation OI 24 h (%)",
+    "ls_global": "L/S tous comptes",
+    "ls_top_comptes": "L/S gros traders, comptes",
+    "ls_top_positions": "L/S gros traders, positions",
+    "taker_bougies": "Ratio taker",
+    "basis": "Basis (%)",
+}
+# Valeur de référence tracée sur chaque histogramme (0,01 % par 8 h : taux de funding par défaut de Binance)
+REPERES = {"funding_8h": 0.01, "variation_oi_24h": 0, "ls_global": 1, "ls_top_comptes": 1,
+           "ls_top_positions": 1, "taker_bougies": 1, "basis": 0}
+
 
 def charger_panel() -> pd.DataFrame:
     """Panel horaire sur la période d'étude, lu en local s'il existe, sinon sur le S3."""
@@ -38,7 +51,7 @@ def taker_ratio_bougies(crypto: pd.DataFrame) -> pd.Series:
 def mois_de_la_bougie(panel: pd.DataFrame) -> pd.Index:
     """Mois de chaque ligne au format AAAA-MM, d'après le début de sa bougie."""
     # La ligne 2026-10-01 00:00 couvre la dernière heure de septembre : elle reste en septembre.
-    return (panel.index - pd.Timedelta("1h")).strftime("%Y-%m")
+    return (panel.index - pd.Timedelta("1h")).strftime("%Y-%m").rename("mois")
 
 
 def manquants_par_mois(panel: pd.DataFrame) -> pd.DataFrame:
@@ -171,4 +184,62 @@ def graphique_perp_spot(ratio: pd.DataFrame) -> None:
     ax.set_title("Le perpétuel échange plusieurs fois le volume du spot")
     ax.grid(axis="y", alpha=0.3)
     ax.legend()
+    plt.show()
+
+
+def positionnement(panel: pd.DataFrame) -> pd.DataFrame:
+    """Variables de positionnement de chaque heure, dans des unités lisibles, avec la colonne symbol."""
+    variables = panel[["symbol", "ls_global", "ls_top_comptes", "ls_top_positions"]].copy()
+    variables["funding_8h"] = panel["funding_horaire"] * 8 * 100
+    variables["variation_oi_24h"] = panel.groupby("symbol")["oi"].pct_change(24) * 100
+    variables["taker_bougies"] = taker_ratio_bougies(panel)
+    variables["basis"] = panel["basis"] * 100
+    return variables[["symbol", *NOMS_POSITIONNEMENT]]
+
+
+def resume_positionnement(variables: pd.DataFrame) -> pd.DataFrame:
+    """Minimum, quantiles à 1 et 99 %, médiane et maximum de chaque variable, par crypto."""
+    lignes = {}
+    for nom, libelle in NOMS_POSITIONNEMENT.items():
+        for symbole, crypto in variables.groupby("symbol"):
+            serie = crypto[nom]
+            lignes[(libelle, symbole)] = {
+                "Min": serie.min(),
+                "1 %": serie.quantile(0.01),
+                "Médiane": serie.median(),
+                "99 %": serie.quantile(0.99),
+                "Max": serie.max(),
+            }
+    return pd.DataFrame(lignes).T
+
+
+def position_du_funding(panel: pd.DataFrame) -> pd.DataFrame:
+    """Part des heures (en %) où le funding est sous, au ou au-dessus du taux par défaut, par crypto et par année."""
+    funding_8h = panel["funding_horaire"] * 8
+    au_taux_par_defaut = np.isclose(funding_8h, 0.0001)
+    position = np.select([au_taux_par_defaut, funding_8h < 0.0001], ["Au taux par défaut", "En dessous"], "Au-dessus")
+    position = pd.Series(position, index=panel.index)
+    annee = mois_de_la_bougie(panel).str[:4].rename("année")
+    parts = position.groupby([panel["symbol"], annee]).value_counts(normalize=True).unstack(fill_value=0) * 100
+    return parts[["En dessous", "Au taux par défaut", "Au-dessus"]]
+
+
+def graphique_distributions(variables: pd.DataFrame) -> None:
+    """Histogramme de chaque variable, une courbe par crypto, entre les quantiles à 1 et 99 %."""
+    fig, axes = plt.subplots(2, 4, figsize=(18, 8))
+
+    for ax, (nom, libelle) in zip(axes.flat, NOMS_POSITIONNEMENT.items()):
+        # Sans couper les 1 % extrêmes de chaque côté, quelques valeurs aberrantes écraseraient l'histogramme
+        bornes = variables[nom].quantile([0.01, 0.99])
+        for symbole, crypto in variables.groupby("symbol"):
+            ax.hist(crypto[nom], bins=60, range=tuple(bornes), density=True, histtype="step",
+                    linewidth=1.5, color=COULEURS[symbole], label=symbole)
+        ax.axvline(REPERES[nom], color="black", linestyle="--", linewidth=1)
+        ax.set_title(libelle)
+        ax.set_yticks([])
+
+    axes.flat[-1].legend(*axes.flat[0].get_legend_handles_labels(), loc="center", fontsize=12)
+    axes.flat[-1].axis("off")
+    fig.suptitle("Distribution des variables de positionnement (densité, tirets : valeur de référence)")
+    fig.tight_layout()
     plt.show()
