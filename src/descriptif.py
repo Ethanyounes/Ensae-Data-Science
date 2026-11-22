@@ -1,11 +1,15 @@
 """Statistiques et graphiques descriptifs appelés par rapport.ipynb."""
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 from src.config import START
 from src.panel_binance import PANEL_FILE
 from src.stockage import lire_public
+
+COULEURS = {"BTCUSDT": "#2a78d6", "ETHUSDT": "#eb6834", "SOLUSDT": "#1baf7a"}
+HEURES_PAR_AN = 24 * 365
 
 
 def charger_panel() -> pd.DataFrame:
@@ -16,6 +20,17 @@ def charger_panel() -> pd.DataFrame:
         panel = lire_public("interim/panel.parquet")
     # La ligne START 00:00 contient la bougie de 23 h la veille : elle est exclue, comme dans grille_horaire.
     return panel.loc[panel.index > pd.Timestamp(START, tz="UTC")]
+
+
+def rendements_horaires(crypto: pd.DataFrame) -> pd.Series:
+    """Rendements logarithmiques horaires du perpétuel, pour une seule crypto."""
+    return np.log(crypto["close"]).diff()
+
+
+def taker_ratio_bougies(crypto: pd.DataFrame) -> pd.Series:
+    """Ratio achats agressifs / ventes agressives de l'heure, calculé depuis les bougies."""
+    ventes_agressives = crypto["volume"] - crypto["taker_buy_volume"]
+    return crypto["taker_buy_volume"] / ventes_agressives
 
 
 def mois_de_la_bougie(panel: pd.DataFrame) -> pd.Index:
@@ -41,3 +56,58 @@ def graphique_manquants(manquants: pd.DataFrame) -> None:
     fig.colorbar(image, ax=ax, label="Heures incomplètes (%)")
     ax.set_title("Heures où au moins une variable manque, par mois")
     plt.show()
+
+
+def comparer_taker(panel: pd.DataFrame) -> pd.DataFrame:
+    """Compare, par crypto, le ratio taker des bougies à celui des relevés à 5 minutes."""
+    lignes = {}
+    for symbole, crypto in panel.groupby("symbol"):
+        bougies = taker_ratio_bougies(crypto)
+        releves = crypto["taker_ratio"]
+        lignes[symbole] = {
+            "Médiane bougies": bougies.median(),
+            "Médiane relevés": releves.median(),
+            "Médiane relevés / bougies": (releves / bougies).median(),
+            "Corrélation des log": np.log(bougies).corr(np.log(releves)),
+            "Même côté de 1 (%)": ((bougies > 1) == (releves > 1)).mean() * 100,
+        }
+    return pd.DataFrame(lignes).T
+
+
+def graphique_taker(panel: pd.DataFrame) -> None:
+    """Nuage du ratio taker des relevés contre celui des bougies, une case par crypto."""
+    nb_cryptos = panel["symbol"].nunique()
+    fig, axes = plt.subplots(1, nb_cryptos, figsize=(5 * nb_cryptos, 5), sharex=True, sharey=True)
+
+    for ax, (symbole, crypto) in zip(axes, panel.groupby("symbol")):
+        ax.scatter(taker_ratio_bougies(crypto), crypto["taker_ratio"], s=1, alpha=0.15, color=COULEURS[symbole])
+        ax.axline((1, 1), slope=1, color="black", linestyle="--", linewidth=1, label="Égalité")
+        ax.axhline(1, color="grey", linewidth=0.8)
+        ax.axvline(1, color="grey", linewidth=0.8)
+        # Les quelques ratios au-delà de 3 écraseraient le nuage
+        ax.set_xlim(0, 3)
+        ax.set_ylim(0, 3)
+        ax.set_title(symbole)
+        ax.set_xlabel("Ratio taker des bougies (1 h)")
+        ax.legend(loc="upper left")
+
+    axes[0].set_ylabel("Ratio taker des relevés (moyenne des 5 min)")
+    fig.tight_layout()
+    plt.show()
+
+
+def tableau_cryptos(panel: pd.DataFrame) -> pd.DataFrame:
+    """Taille, volatilité, rendement et funding de chaque crypto sur la période d'étude."""
+    lignes = {}
+    for symbole, crypto in panel.groupby("symbol"):
+        rendements = rendements_horaires(crypto)
+        lignes[symbole] = {
+            "Volume quotidien moyen (Md USDT)": crypto["quote_volume"].mean() * 24 / 1e9,
+            "Open interest moyen (Md USDT)": crypto["oi_usd"].mean() / 1e9,
+            "Volatilité annualisée (%)": rendements.std() * np.sqrt(HEURES_PAR_AN) * 100,
+            "Rendement total (%)": (crypto["close"].iloc[-1] / crypto["close"].iloc[0] - 1) * 100,
+            "Funding moyen annualisé (%)": crypto["funding_horaire"].mean() * HEURES_PAR_AN * 100,
+            "Heures à funding négatif (%)": (crypto["funding_horaire"] < 0).mean() * 100,
+            "Volume perpétuel / volume spot": crypto["quote_volume"].sum() / crypto["spot_quote_volume"].sum(),
+        }
+    return pd.DataFrame(lignes).T
