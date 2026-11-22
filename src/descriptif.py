@@ -289,3 +289,48 @@ def graphique_series(panel: pd.DataFrame, variables: pd.DataFrame) -> None:
     axes[0].legend(loc="lower right")
     fig.tight_layout()
     plt.show()
+
+
+def graphique_correlations(variables: pd.DataFrame) -> None:
+    """Corrélations de rang (Spearman) entre variables de positionnement, une carte par crypto."""
+    nb_cryptos = variables["symbol"].nunique()
+    fig, axes = plt.subplots(1, nb_cryptos, figsize=(6 * nb_cryptos, 6.5), layout="constrained")
+    libelles = list(NOMS_POSITIONNEMENT.values())
+
+    for ax, (symbole, crypto) in zip(axes, variables.groupby("symbol")):
+        correlations = crypto.drop(columns="symbol").corr(method="spearman")
+        image = ax.imshow(correlations, cmap="RdBu_r", vmin=-1, vmax=1)
+        for i in range(len(correlations)):
+            for j in range(len(correlations)):
+                ax.text(j, i, f"{correlations.iloc[i, j]:.2f}", ha="center", va="center", fontsize=8)
+        ax.set_xticks(range(len(libelles)), libelles, rotation=45, ha="right")
+        ax.set_yticks(range(len(libelles)), libelles if ax is axes[0] else [])
+        ax.set_title(symbole)
+
+    fig.colorbar(image, ax=axes, shrink=0.7, label="Corrélation de Spearman")
+    plt.show()
+
+
+def correlations_rendement_passe(panel: pd.DataFrame, variables: pd.DataFrame) -> pd.DataFrame:
+    """Corrélation de Spearman de chaque variable avec le rendement des 7 derniers jours, par crypto."""
+    colonnes = {}
+    for symbole, crypto in panel.groupby("symbol"):
+        rendement_7j = np.log(crypto["close"]).diff(24 * 7)
+        variables_crypto = variables.loc[variables["symbol"] == symbole]
+        colonnes[symbole] = {libelle: rendement_7j.corr(variables_crypto[nom], method="spearman")
+                             for nom, libelle in NOMS_POSITIONNEMENT.items()}
+    return pd.DataFrame(colonnes)
+
+
+def persistance(variables: pd.DataFrame) -> pd.DataFrame:
+    """Autocorrélation de chaque variable à 1 h, 24 h et 7 jours, en moyenne sur les cryptos."""
+    lignes = []
+    for _, crypto in variables.groupby("symbol"):
+        for nom, libelle in NOMS_POSITIONNEMENT.items():
+            lignes.append({
+                "Variable": libelle,
+                "1 h": crypto[nom].autocorr(1),
+                "24 h": crypto[nom].autocorr(24),
+                "7 jours": crypto[nom].autocorr(24 * 7),
+            })
+    return pd.DataFrame(lignes).groupby("Variable", sort=False).mean()
