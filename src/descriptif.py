@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from src.cible import HORIZON, ajouter_cible
 from src.config import START
 from src.panel_binance import PANEL_FILE
 from src.stockage import lire_public
@@ -29,12 +30,20 @@ EVENEMENTS = {"2024-01-10": "ETF bitcoin au comptant", "2024-11-05": "Élection 
               "2025-10-10": "Krach du 10 octobre"}
 
 
-def charger_panel() -> pd.DataFrame:
-    """Panel horaire sur la période d'étude, lu en local s'il existe, sinon sur le S3."""
+def charger_panel(avec_chauffe: bool = False) -> pd.DataFrame:
+    """Panel horaire, lu en local s'il existe, sinon sur le S3. Sans la chauffe par défaut."""
     if PANEL_FILE.exists():
         panel = pd.read_parquet(PANEL_FILE)
     else:
         panel = lire_public("interim/panel.parquet")
+    # La cible a besoin de la chauffe : σ est calculé sur les 30 jours qui précèdent t
+    if avec_chauffe:
+        return panel
+    return periode_etude(panel)
+
+
+def periode_etude(panel: pd.DataFrame) -> pd.DataFrame:
+    """Lignes de la période d'étude, sans la chauffe."""
     # La ligne START 00:00 contient la bougie de 23 h la veille : elle est exclue, comme dans grille_horaire.
     return panel.loc[panel.index > pd.Timestamp(START, tz="UTC")]
 
@@ -334,3 +343,176 @@ def persistance(variables: pd.DataFrame) -> pd.DataFrame:
                 "7 jours": crypto[nom].autocorr(24 * 7),
             })
     return pd.DataFrame(lignes).groupby("Variable", sort=False).mean()
+
+
+# Étape 3 : la cible
+
+# Chaque variante change un seul seuil de la cible de base (voir src/cible.py)
+VARIANTES = {
+    "Base": {},
+    "k = 2,5": {"k": 2.5},
+    "k = 4": {"k": 4},
+    "Plancher 3 %": {"plancher": 0.03},
+    "Plancher 8 %": {"plancher": 0.08},
+    "δ = 5 %": {"delta": 0.05},
+    "δ = 15 %": {"delta": 0.15},
+    "Horizon 12 h": {"horizon": 12},
+    "Horizon 48 h": {"horizon": 48},
+}
+JOURS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+
+
+def tableau_episodes(panel_cible: pd.DataFrame, horizon: int = HORIZON) -> pd.DataFrame:
+    """Une ligne par épisode, décrit par son heure à la plus forte hausse."""
+    # Deux heures positives à moins d'un horizon d'écart ont des fenêtres qui se chevauchent :
+    # elles décrivent la même hausse, donc le même épisode.
+    positives = panel_cible[panel_cible["shortsqueeze"].fillna(False)].reset_index()
+    nouvel_episode = (positives["symbol"] != positives["symbol"].shift()) | \
+                     (positives["t"].diff() >= pd.Timedelta(hours=horizon))
+    groupes = positives.groupby(nouvel_episode.cumsum())
+
+    plus_forte_hausse = positives.loc[groupes["hausse_pic"].idxmax()].set_index(groupes.size().index)
+    episodes_cible = pd.DataFrame({
+        "symbol": plus_forte_hausse["symbol"],
+        "debut": groupes["t"].first(),
+        "fin": groupes["t"].last(),
+        "heures_positives": groupes.size(),
+        "date_pic": plus_forte_hausse["date_pic"],
+        "delai_pic_h": plus_forte_hausse["delai_pic_h"],
+        "hausse_pic_pct": 100 * plus_forte_hausse["hausse_pic"],
+        "variation_oi_pct": 100 * plus_forte_hausse["variation_oi"],
+        "ratio_achats_ventes": plus_forte_hausse["ratio_achats_ventes"],
+    })
+    return episodes_cible.reset_index(drop=True)
+
+
+def frequence_cible(panel_cible: pd.DataFrame, episodes_cible: pd.DataFrame) -> pd.DataFrame:
+    """Heures positives (nombre et %) et nombre d'épisodes, par crypto et par année, puis au total."""
+    annee = mois_de_la_bougie(panel_cible).str[:4].rename("année")
+    frequence = panel_cible.groupby([panel_cible["symbol"], annee])["shortsqueeze"].agg(
+        heures="count", heures_positives="sum")
+    annee_episode = (episodes_cible["debut"] - pd.Timedelta("1h")).dt.strftime("%Y").rename("année")
+    frequence["episodes"] = episodes_cible.groupby([episodes_cible["symbol"], annee_episode]).size()
+    frequence["episodes"] = frequence["episodes"].fillna(0)
+
+    total = frequence.groupby("symbol").sum()
+    total.index = pd.MultiIndex.from_product([total.index, ["Total"]], names=["symbol", "année"])
+    frequence = pd.concat([frequence, total]).sort_index().astype("int64")
+    # Part des heures positives : c'est la précision d'un modèle qui prédirait au hasard (base naïve de la PR-AUC)
+    frequence["part_positive_pct"] = 100 * frequence["heures_positives"] / frequence["heures"]
+    return frequence
+
+
+def entonnoir(panel_cible: pd.DataFrame) -> pd.DataFrame:
+    """Nombre d'heures qui passent chaque étape C1 → C1+C2 → C1+C2+C3, par crypto."""
+    connues = panel_cible.dropna(subset="shortsqueeze")
+    c1 = connues["c1"]
+    etapes = pd.DataFrame({
+        "C1 :\nforte hausse": c1,
+        "C1 et\nopen interest en hausse": c1 & (connues["variation_oi"] > 0),
+        "C1 + C2 :\nbaisse de l'open interest": c1 & connues["c2"],
+        "C1 + C2 + C3 :\nshort squeeze": connues["shortsqueeze"],
+    })
+    return etapes.groupby(connues["symbol"]).sum()
+
+
+def graphique_entonnoir(nombres: pd.DataFrame) -> None:
+    """Part des heures C1 (en %) qui passent chaque étape, une barre par crypto."""
+    parts = 100 * nombres.div(nombres.iloc[:, 0], axis=0)
+    fig, ax = plt.subplots(figsize=(11, 4.5))
+    largeur = 0.8 / len(parts)
+    for i, (symbole, ligne) in enumerate(parts.iterrows()):
+        positions = np.arange(len(ligne)) + i * largeur
+        barres = ax.bar(positions, ligne, width=largeur, color=COULEURS[symbole], label=symbole)
+        ax.bar_label(barres, labels=[f"{n:,}".replace(",", " ") for n in nombres.loc[symbole]], fontsize=8)
+
+    ax.set_xticks(np.arange(len(parts.columns)) + 0.4 - largeur / 2, parts.columns)
+    ax.set_ylabel("Part des heures C1 (%)")
+    ax.set_title("Parmi les fortes hausses, combien sont des rachats de shorts ? (nombre d'heures au-dessus des barres)")
+    ax.grid(axis="y", alpha=0.3)
+    ax.legend()
+    plt.show()
+
+
+def simultaneite(panel_cible: pd.DataFrame) -> pd.DataFrame:
+    """Parmi les heures positives d'une crypto (ligne), part (en %) où une autre crypto (colonne) l'est aussi."""
+    positives = (panel_cible.reset_index()
+                 .pivot(index="t", columns="symbol", values="shortsqueeze")
+                 .fillna(False).astype("int64"))
+    ensemble = positives.T @ positives  # nombre d'heures positives en même temps, pour chaque paire
+    parts = 100 * ensemble.div(np.diag(ensemble), axis=0)
+    au_moins_une_autre = positives.sum(axis=1) >= 2
+    parts["Au moins une autre"] = [100 * au_moins_une_autre[positives[s] == 1].mean() for s in positives]
+    return parts
+
+
+def graphique_calendrier(episodes_cible: pd.DataFrame) -> None:
+    """Heure UTC et jour de la semaine du pic de chaque épisode, toutes cryptos confondues."""
+    # Le pic a lieu pendant la bougie qui finit à date_pic : on prend l'heure de début de cette bougie
+    debut_bougie_pic = episodes_cible["date_pic"] - pd.Timedelta("1h")
+    heures = debut_bougie_pic.dt.hour.value_counts().reindex(range(24), fill_value=0)
+    jours = debut_bougie_pic.dt.dayofweek.value_counts().reindex(range(7), fill_value=0)
+
+    fig, (ax_heure, ax_jour) = plt.subplots(1, 2, figsize=(14, 4), width_ratios=[2, 1])
+    ax_heure.bar(heures.index, heures, color="grey")
+    for heure_funding in [0, 8, 16]:
+        ax_heure.axvline(heure_funding - 0.5, color="black", linestyle="--", linewidth=1)
+    ax_heure.set_xticks(range(0, 24, 2))
+    ax_heure.set_xlabel("Heure UTC du pic (tirets : paiements de funding)")
+    ax_heure.set_ylabel("Nombre d'épisodes")
+
+    ax_jour.bar(JOURS, jours, color="grey")
+    ax_jour.tick_params(axis="x", rotation=45)
+    ax_jour.set_xlabel("Jour du pic")
+    fig.suptitle(f"Quand ont lieu les pics des {len(episodes_cible)} épisodes ?")
+    fig.tight_layout()
+    plt.show()
+
+
+def profil_episodes(episodes_cible: pd.DataFrame) -> pd.DataFrame:
+    """Nombre d'épisodes et valeurs médianes de leurs heures positives, de leur pic et de la baisse d'open interest."""
+    colonnes = ["heures_positives", "delai_pic_h", "hausse_pic_pct", "variation_oi_pct", "ratio_achats_ventes"]
+    profil = episodes_cible.groupby("symbol")[colonnes].median()
+    profil.insert(0, "episodes", episodes_cible.groupby("symbol").size())
+    return profil
+
+
+def sensibilite(panel_complet: pd.DataFrame) -> pd.DataFrame:
+    """Part des heures positives (en %) et nombre d'épisodes pour chaque variante de la cible, par crypto."""
+    lignes = {}
+    for nom, seuils in VARIANTES.items():
+        panel_cible = periode_etude(ajouter_cible(panel_complet, **seuils))
+        episodes_cible = tableau_episodes(panel_cible, seuils.get("horizon", HORIZON))
+        for symbole, crypto in panel_cible.groupby("symbol"):
+            lignes[(nom, symbole)] = {
+                "Heures positives (%)": 100 * crypto["shortsqueeze"].mean(),
+                "Épisodes": (episodes_cible["symbol"] == symbole).sum(),
+            }
+    return pd.DataFrame(lignes).T.unstack().reindex(list(VARIANTES))
+
+
+def graphique_episode(panel_cible: pd.DataFrame, symbole: str, debut: str) -> None:
+    """Prix, open interest, funding et ratio long/short de 3 jours avant à 1 jour après le pic d'un épisode."""
+    crypto = panel_cible.loc[panel_cible["symbol"] == symbole]
+    debut = pd.Timestamp(debut, tz="UTC")
+    pic = crypto.loc[debut, "date_pic"]
+    fenetre = crypto.loc[debut - pd.Timedelta("3D"): pic + pd.Timedelta("1D")]
+
+    series = {
+        "Prix (USDT)": fenetre["close"],
+        "Open interest (en crypto)": fenetre["oi"],
+        "Funding (% par 8 h)": fenetre["funding_horaire"] * 8 * 100,
+        "L/S tous comptes": fenetre["ls_global"],
+    }
+    fig, axes = plt.subplots(len(series), 1, figsize=(13, 10), sharex=True)
+    for ax, (titre, serie) in zip(axes, series.items()):
+        ax.plot(serie.index, serie, color=COULEURS[symbole])
+        ax.axvline(debut, color="crimson", linestyle="--", linewidth=1)
+        ax.axvline(pic, color="black", linestyle="--", linewidth=1)
+        ax.set_title(titre, loc="left")
+        ax.grid(axis="y", alpha=0.3)
+    axes[2].axhline(0.01, color="grey", linestyle=":", linewidth=1)
+    axes[3].axhline(1, color="grey", linestyle=":", linewidth=1)
+    fig.suptitle(f"{symbole} : épisode qui commence le {debut:%Y-%m-%d %H:%M} (rouge), pic le {pic:%Y-%m-%d %H:%M} (noir)")
+    fig.tight_layout()
+    plt.show()
