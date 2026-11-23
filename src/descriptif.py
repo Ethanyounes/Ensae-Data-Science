@@ -517,7 +517,7 @@ def graphique_episode(panel_cible: pd.DataFrame, symbole: str, debut: str) -> No
     fig.tight_layout()
     plt.show()
 
-# étape 4 : la cible et les variables de positionnement
+# étape 4 : positionnement et squeezes, première réponse à H1/H2
 
 def taux_squeeze_par_decile(panel: pd.DataFrame, variable: str) -> pd.DataFrame:
     """Calcule le taux de squeeze par décile, pour chaque crypto."""
@@ -544,6 +544,36 @@ def taux_squeeze_par_decile(panel: pd.DataFrame, variable: str) -> pd.DataFrame:
                 "heures": heures,
                 "heures_positives": heures_positives,
                 "taux_pct": 100 * heures_positives / heures,
+            })
+
+    return pd.DataFrame(resultats)
+
+def rendement_par_decile(panel: pd.DataFrame, variable: str) -> pd.DataFrame:
+    """Quantiles du rendement à 24 h par crypto et par décile."""
+    donnees = panel[["symbol", "close", variable]].copy()
+    prix_dans_24h = donnees.groupby("symbol")["close"].shift(-24)
+    donnees["rendement_24h"] = 100 * (prix_dans_24h / donnees["close"] - 1)
+    donnees = donnees.dropna(subset=[variable, "rendement_24h"])
+    resultats = []
+
+    for symbole, crypto in donnees.groupby("symbol"):
+        heures_restantes = crypto
+
+        for decile in range(1, 11):
+            borne = crypto[variable].quantile(decile / 10)
+            groupe = heures_restantes[heures_restantes[variable] <= borne]
+            heures_restantes = heures_restantes[heures_restantes[variable] > borne]
+
+            if len(groupe) == 0:
+                continue
+
+            rendement = groupe["rendement_24h"]
+            resultats.append({
+                "symbol": symbole,
+                "decile": decile,
+                "5 %": rendement.quantile(0.05),
+                "Médiane": rendement.median(),
+                "95 %": rendement.quantile(0.95),
             })
 
     return pd.DataFrame(resultats)
