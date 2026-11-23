@@ -49,12 +49,10 @@ def build_panel_bybit(symbols: list[str]) -> pd.DataFrame:
     panel.to_parquet(PANEL_BYBIT_FILE)
     return panel
 
-
+#Le but : pour chaque crypto, compter combien d'heures posent problème, contrôle par contrôle. 
+#La fonction ne corrige rien, elle fait un constat.
 def controles_bybit(panel: pd.DataFrame) -> pd.DataFrame:
-    """Nombre d'heures qui échouent à chaque contrôle de cohérence, par crypto.
-
-    Rien n'est corrigé ici : la fonction signale. 0 partout signifie des données saines.
-    """
+  
     resultats = {}
     for symbol, p in panel.groupby("symbol"):
         # Bougie cohérente : l'ouverture et la clôture sont entre le plus bas et le plus haut
@@ -74,15 +72,14 @@ def controles_bybit(panel: pd.DataFrame) -> pd.DataFrame:
             "volume_nul": (p["volume"] == 0).sum(),
             "oi_fige_3h": fige.sum(),
         }
-    return pd.DataFrame(resultats).T.astype("int64")
+    return pd.DataFrame(resultats).T.astype("int64") # on force panda à mettre des entiers afin que 0 et non 0.0 soit afiché
 
-
+#Plus fortes variations horaires et funding extrêmes par crypto, avec leur date.
+#Ces valeurs sont gardées dans le panel : ce sont de vrais événements de marché,
+#et un squeeze est justement un événement extrême. On les signale seulement.
+    
 def extremes_bybit(panel: pd.DataFrame) -> pd.DataFrame:
-    """Plus fortes variations horaires et funding extrêmes par crypto, avec leur date.
-
-    Ces valeurs sont gardées dans le panel : ce sont de vrais événements de marché,
-    et un squeeze est justement un événement extrême. On les signale seulement.
-    """
+    
     resultats = {}
     for symbol, p in panel.groupby("symbol"):
         variation_oi = p["oi"].pct_change()
