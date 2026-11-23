@@ -516,3 +516,34 @@ def graphique_episode(panel_cible: pd.DataFrame, symbole: str, debut: str) -> No
     fig.suptitle(f"{symbole} : épisode qui commence le {debut:%Y-%m-%d %H:%M} (rouge), pic le {pic:%Y-%m-%d %H:%M} (noir)")
     fig.tight_layout()
     plt.show()
+
+# étape 4 : la cible et les variables de positionnement
+
+def taux_squeeze_par_decile(panel: pd.DataFrame, variable: str) -> pd.DataFrame:
+    """Calcule le taux de squeeze par décile, pour chaque crypto."""
+    donnees = panel[["symbol", variable, "shortsqueeze"]].dropna()
+    resultats = []
+
+    for symbole in donnees["symbol"].unique():
+        crypto = donnees[donnees["symbol"] == symbole]
+        heures_restantes = crypto
+
+        for decile in range(1, 11):
+            borne = crypto[variable].quantile(decile / 10)
+            groupe = heures_restantes[heures_restantes[variable] <= borne]
+            heures_restantes = heures_restantes[heures_restantes[variable] > borne]
+
+            if len(groupe) == 0:
+                continue
+
+            heures = len(groupe)
+            heures_positives = groupe["shortsqueeze"].sum()
+            resultats.append({
+                "symbol": symbole,
+                "decile": decile,
+                "heures": heures,
+                "heures_positives": heures_positives,
+                "taux_pct": 100 * heures_positives / heures,
+            })
+
+    return pd.DataFrame(resultats)
