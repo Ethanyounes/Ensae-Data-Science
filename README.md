@@ -8,8 +8,9 @@ Projet de Data Science, ENSAE 2A.
 4. [Données](#données)
 5. [Convention de temps](#convention-de-temps)
 6. [Nettoyage et panel horaire](#nettoyage-et-panel-horaire)
-7. [Analyse descriptive](#analyse-descriptive)
-8. [Répartition du travail](#répartition-du-travail)
+7. [Cible](#cible-srcciblepy)
+8. [Analyse descriptive](#analyse-descriptive)
+9. [Répartition du travail](#répartition-du-travail)
 
 ## Question et hypothèses
 
@@ -23,7 +24,7 @@ Projet de Data Science, ENSAE 2A.
 - **C2, rachat des shorts** : l'open interest au pic est inférieur d'au moins 10 % à `OI_{t−1}` ;
 - **C3, achats agressifs** : le ratio taker moyen entre t et le pic est supérieur à 1.
 
-Variantes testées : k = 2,5 ou 4 ; plancher de 3 ou 8 % ; δ = 5 ou 15 % ; horizon de 12 ou 48 h.
+Variantes testées : k = 2,5 ou 4 ; plancher de 3 ou 8 % ; δ = 5 ou 15 % ; horizon de 12 ou 48 h (le seuil devient alors `k·σ_30j·√horizon`). Le calcul est détaillé dans [Cible](#cible-srcciblepy).
 
 **La réponse comporte deux volets :**
 - **statistique** : le positionnement bat-il une base naïve, et un modèle qui n'utilise que les prix (PR-AUC) ?
@@ -39,6 +40,7 @@ uv run python -m scripts.telecharger_binance   # collecte Binance (relançable)
 uv run python -m scripts.telecharger_bybit     # collecte Bybit (moins de 5 min)
 uv run python -m scripts.telecharger_fng       # indice Fear & Greed (une requête)
 uv run python -m scripts.construire_panel      # panels horaires -> data/interim/
+uv run python -m scripts.indicateur_shortsqueeze  # cible -> data/processed/ (facultatif : le rapport la recalcule)
 uv run jupyter lab                             # ouvrir rapport.ipynb
 ```
 
@@ -62,10 +64,10 @@ src/
   panel_binance.py     nettoyage et panel horaire (une ligne par crypto et par heure t)
   panel_bybit.py       panel horaire Bybit, contrôles de cohérence et fusion avec le panel Binance
   panel_fng.py         nettoyage de l'indice Fear & Greed et rattachement au panel horaire
+  cible.py             cible : conditions C1, C2, C3 et squeeze, seuils en paramètres
+  descriptif.py        statistiques et graphiques descriptifs (étapes 1 à 3)
   -- à venir --
-  cible.py             définition des squeezes                            (B)
   variables.py         construction des variables                         (C)
-  descriptif.py        statistiques et graphiques descriptifs             (en commun)
   modeles.py           base naïve, logit, LightGBM, validation temporelle
   strategie.py         backtest avec frais et funding
 scripts/
@@ -73,12 +75,14 @@ scripts/
   telecharger_bybit.py     télécharge toutes les séries Bybit
   telecharger_fng.py       télécharge l'indice Fear & Greed
   construire_panel.py      construit les panels Binance, Bybit et leur fusion, et affiche manquants et contrôles
+  indicateur_shortsqueeze.py  calcule la cible et enregistre data/processed/panel_cible.parquet
+  descriptif.ipynb         exploration des premiers squeezes (brouillon de l'étape 3)
 data/
   raw/binance/{metrics,fundingRate,klines,premiumIndexKlines,spot_klines}/<SYMBOLE>/*.parquet
   raw/bybit/{funding,open_interest,klines}/<SYMBOLE>/<SYMBOLE>-<série>.parquet
   raw/fng/
   interim/       panels horaires
-  processed/     panel + cible + variables
+  processed/     panel + cible (panel_cible.parquet) + variables
 rapport.ipynb    récit, graphiques, résultats
 ```
 
@@ -302,9 +306,31 @@ Le facteur est la quantité de crypto d'un contrat Bybit divisée par celle d'un
 
 Les prix sont quasiment identiques : les deux sources sont bien alignées dans le temps. Le positionnement (open interest, funding) est commun aux deux plateformes mais pas identique, car chaque plateforme a ses propres clients.
 
+## Cible (`src/cible.py`)
+
+`ajouter_cible(panel, k=3, plancher=0.05, delta=0.10, horizon=24)` ajoute la cible au panel, crypto par crypto. Chaque variante change un seul paramètre, par exemple `ajouter_cible(panel, delta=0.05)`.
+
+| Colonne | Contenu |
+|---|---|
+| `sigma_30j` | écart-type des rendements horaires (en log) de t−30 jours (exclu) à t |
+| `date_pic`, `delai_pic_h` | heure du plus haut des `horizon` heures suivantes, et son délai après t |
+| `hausse_pic` | (`high` au pic) / (`close` de la ligne t) − 1 |
+| `variation_oi` | (open interest au pic) / (open interest de la ligne t) − 1 |
+| `ratio_achats_ventes` | achats agressifs / ventes agressives, de t+1 h au pic (bougies) |
+| `c1`, `c2`, `c3` | chaque condition séparément, pour l'entonnoir |
+| `shortsqueeze` | C1 et C2 et C3 |
+
+- **Calcul sans boucle** : le pic vient d'une fenêtre glissante sur les `high` des heures suivantes, et les volumes de t au pic de la différence de deux sommes cumulées. Le calcul prend moins d'une seconde, contre plusieurs dizaines de minutes avec une boucle sur les heures, ce qui permet de tester les variantes.
+- **Sur le panel complet** : σ a besoin des 30 jours de chauffe, on garde ensuite la période d'étude (`descriptif.periode_etude`).
+- **Fin de série** : les dernières heures n'ont pas assez de futur, leur cible est inconnue (`<NA>`) et non fausse.
+- **Vérification** : sur les 13 820 heures où la hausse dépasse 5 %, les grandeurs intermédiaires sont identiques à celles de la première version (une boucle sur les heures). Seules 10 heures changent de classement, parce que C1 compare désormais la hausse simple au seuil, comme dans la définition, et non la hausse en log.
+- **Épisodes** (`descriptif.tableau_episodes`) : deux heures positives d'une même crypto à moins d'un horizon d'écart appartiennent au même épisode, car leurs fenêtres se chevauchent. Compter les heures consécutives coupait un même squeeze en plusieurs épisodes dès qu'une heure manquait. Regrouper les heures par pic ne marche pas non plus : pendant une hausse qui dure, chaque heure voit un pic différent, une heure plus tard. Chaque épisode est décrit par son heure à la plus forte hausse.
+
+`scripts/indicateur_shortsqueeze.py` enregistre le panel avec la cible dans `data/processed/panel_cible.parquet`. Le rapport n'en a pas besoin : il recalcule la cible.
+
 ## Analyse descriptive
 
-**Objectif.** Montrer que la cible est rare et groupée dans le temps, décrire les variables de positionnement, puis voir si le positionnement diffère déjà avant un squeeze. Cette dernière étape donne une première réponse à H1 contre H2, sans modèle. Le code ira dans `src/descriptif.py`, appelé par `rapport.ipynb`. Chaque graphique y est commenté et relié à la question.
+**Objectif.** Montrer que la cible est rare et groupée dans le temps, décrire les variables de positionnement, puis voir si le positionnement diffère déjà avant un squeeze. Cette dernière étape donne une première réponse à H1 contre H2, sans modèle. Le code est dans `src/descriptif.py`, appelé par `rapport.ipynb`. Chaque graphique y est commenté et relié à la question.
 
 | Étape | Question | Données nécessaires |
 |---|---|---|
@@ -340,6 +366,14 @@ Les prix sont quasiment identiques : les deux sources sont bien alignées dans l
 - **Sensibilité** : fréquence des squeezes pour chaque variante (k, plancher, δ, horizon).
 - **Exemples** : un ou deux squeezes connus en graphique (prix, open interest, funding, ratio long/short sur ±3 jours). Candidat : SOL du 1er au 14 janvier 2023 (voir les [valeurs extrêmes Bybit](#panel-bybit-et-fusion-srcpanel_bybitpy)).
 
+**Fait** (section 3 de `rapport.ipynb`). Principaux constats, avec les valeurs de base :
+- **16 épisodes** (BTC 4, ETH 4, SOL 8), soit 0,13 à 0,31 % des heures : c'est la base naïve de la PR-AUC.
+- **13 épisodes sur 16 en 2023**, aucun en 2025 et un seul en 2026. Une période de test sur 2025-2026 ne contiendrait presque aucun squeeze : le découpage de validation devra en tenir compte.
+- **Entonnoir** : plus de la moitié des fortes hausses (C1) se font avec un open interest en hausse, donc de nouveaux longs. C2 ne garde que 6 à 13 % des heures C1. C3 n'enlève presque rien.
+- **Simultanéité** : 7 épisodes sur 16 tombent dans trois mouvements de marché (13-14 janvier 2023, mars 2023 après SVB, fin février 2024).
+- **Calendrier** : aucun effet visible de l'heure, et trop peu d'épisodes pour conclure sur le jour de la semaine.
+- **Sensibilité** : δ est le seuil décisif (avec δ = 5 %, environ trois fois plus d'épisodes ; avec δ = 15 %, aucun pour BTC). Le plancher de 5 % ne joue presque jamais. Les étapes suivantes devront être vérifiées avec δ = 5 %.
+
 ### Étape 4 : positionnement et squeezes, première réponse à H1/H2
 
 - **Taux de squeeze par décile** de chaque variable (funding, variation d'open interest sur 24 h et 7 jours, ratios long/short, basis, volume perpétuel/spot). Selon H2, le taux monte quand les shorts sont nombreux : funding négatif, ratio bas, open interest en hausse.
@@ -361,7 +395,7 @@ Les prix sont quasiment identiques : les deux sources sont bien alignées dans l
 
 ### Priorités
 
-Les étapes 1 et 2 se font dès maintenant ; les étapes 3 à 5 attendent `cible.py`. Si le temps manque, quatre graphiques relient le plus directement les données à la question :
+Les étapes 1 à 3 sont faites ; les étapes 4 et 5 peuvent commencer, car `cible.py` est disponible. Si le temps manque, quatre graphiques relient le plus directement les données à la question :
 1. la fréquence de la cible, comptée en épisodes ;
 2. l'entonnoir C1 → C3 ;
 3. le taux de squeeze par décile des variables de positionnement ;

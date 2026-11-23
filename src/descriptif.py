@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.cible import ajouter_cible, episodes
+from src.cible import HORIZON, ajouter_cible
 from src.config import START
 from src.panel_binance import PANEL_FILE
 from src.stockage import lire_public
@@ -362,24 +362,28 @@ VARIANTES = {
 JOURS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
 
 
-def tableau_episodes(panel_cible: pd.DataFrame) -> pd.DataFrame:
-    """Une ligne par épisode (heures positives consécutives), décrit par sa première heure."""
-    lignes = []
-    for symbole, crypto in panel_cible.groupby("symbol"):
-        heures_positives = crypto.index[crypto["shortsqueeze"].fillna(False)].tolist()
-        for debut, duree in episodes(heures_positives):
-            premiere_heure = crypto.loc[debut]
-            lignes.append({
-                "symbol": symbole,
-                "debut": debut,
-                "duree_h": duree,
-                "date_pic": premiere_heure["date_pic"],
-                "delai_pic_h": premiere_heure["delai_pic_h"],
-                "hausse_pic_pct": 100 * premiere_heure["hausse_pic"],
-                "variation_oi_pct": 100 * premiere_heure["variation_oi"],
-                "ratio_achats_ventes": premiere_heure["ratio_achats_ventes"],
-            })
-    return pd.DataFrame(lignes)
+def tableau_episodes(panel_cible: pd.DataFrame, horizon: int = HORIZON) -> pd.DataFrame:
+    """Une ligne par épisode, décrit par son heure à la plus forte hausse."""
+    # Deux heures positives à moins d'un horizon d'écart ont des fenêtres qui se chevauchent :
+    # elles décrivent la même hausse, donc le même épisode.
+    positives = panel_cible[panel_cible["shortsqueeze"].fillna(False)].reset_index()
+    nouvel_episode = (positives["symbol"] != positives["symbol"].shift()) | \
+                     (positives["t"].diff() >= pd.Timedelta(hours=horizon))
+    groupes = positives.groupby(nouvel_episode.cumsum())
+
+    plus_forte_hausse = positives.loc[groupes["hausse_pic"].idxmax()].set_index(groupes.size().index)
+    episodes_cible = pd.DataFrame({
+        "symbol": plus_forte_hausse["symbol"],
+        "debut": groupes["t"].first(),
+        "fin": groupes["t"].last(),
+        "heures_positives": groupes.size(),
+        "date_pic": plus_forte_hausse["date_pic"],
+        "delai_pic_h": plus_forte_hausse["delai_pic_h"],
+        "hausse_pic_pct": 100 * plus_forte_hausse["hausse_pic"],
+        "variation_oi_pct": 100 * plus_forte_hausse["variation_oi"],
+        "ratio_achats_ventes": plus_forte_hausse["ratio_achats_ventes"],
+    })
+    return episodes_cible.reset_index(drop=True)
 
 
 def frequence_cible(panel_cible: pd.DataFrame, episodes_cible: pd.DataFrame) -> pd.DataFrame:
@@ -404,10 +408,10 @@ def entonnoir(panel_cible: pd.DataFrame) -> pd.DataFrame:
     connues = panel_cible.dropna(subset="shortsqueeze")
     c1 = connues["c1"]
     etapes = pd.DataFrame({
-        "C1 : forte hausse": c1,
-        "C1 et open interest en hausse": c1 & (connues["variation_oi"] > 0),
-        "C1 + C2 : baisse de l'open interest": c1 & connues["c2"],
-        "C1 + C2 + C3 : short squeeze": connues["shortsqueeze"],
+        "C1 :\nforte hausse": c1,
+        "C1 et\nopen interest en hausse": c1 & (connues["variation_oi"] > 0),
+        "C1 + C2 :\nbaisse de l'open interest": c1 & connues["c2"],
+        "C1 + C2 + C3 :\nshort squeeze": connues["shortsqueeze"],
     })
     return etapes.groupby(connues["symbol"]).sum()
 
@@ -466,8 +470,8 @@ def graphique_calendrier(episodes_cible: pd.DataFrame) -> None:
 
 
 def profil_episodes(episodes_cible: pd.DataFrame) -> pd.DataFrame:
-    """Nombre d'épisodes et valeurs médianes de leur durée, de leur pic et de la baisse d'open interest."""
-    colonnes = ["duree_h", "delai_pic_h", "hausse_pic_pct", "variation_oi_pct", "ratio_achats_ventes"]
+    """Nombre d'épisodes et valeurs médianes de leurs heures positives, de leur pic et de la baisse d'open interest."""
+    colonnes = ["heures_positives", "delai_pic_h", "hausse_pic_pct", "variation_oi_pct", "ratio_achats_ventes"]
     profil = episodes_cible.groupby("symbol")[colonnes].median()
     profil.insert(0, "episodes", episodes_cible.groupby("symbol").size())
     return profil
@@ -478,7 +482,7 @@ def sensibilite(panel_complet: pd.DataFrame) -> pd.DataFrame:
     lignes = {}
     for nom, seuils in VARIANTES.items():
         panel_cible = periode_etude(ajouter_cible(panel_complet, **seuils))
-        episodes_cible = tableau_episodes(panel_cible)
+        episodes_cible = tableau_episodes(panel_cible, seuils.get("horizon", HORIZON))
         for symbole, crypto in panel_cible.groupby("symbol"):
             lignes[(nom, symbole)] = {
                 "Heures positives (%)": 100 * crypto["shortsqueeze"].mean(),
