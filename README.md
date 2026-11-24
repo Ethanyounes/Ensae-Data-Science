@@ -411,6 +411,7 @@ Sur les 10 cryptos, avec δ = 1,5 σ.
 - **Déciles** : le ratio des gros traders en positions donne le gradient le plus net (28 % des épisodes dans son premier décile) et n'est presque pas corrélé au prix. Le funding négatif et l'open interest en hausse, réunis, multiplient le taux de squeeze par presque quatre.
 - **Le prix compte beaucoup** : 42 % des épisodes commencent après les pires rendements sur 7 jours. Le modèle « prix seuls » sera exigeant.
 - **H1 n'est pas soutenue** (rendement médian inchangé), **H2 l'est**. Le lien avec la volatilité est en partie mécanique (C1 exprimée en σ).
+- **Limite** : ces constats portent sur toute la période, 2025-2026 comprise, et ont servi à choisir δ = 1,5 σ et la variable clé. Ces deux choix seront vérifiés sur la seule période d'entraînement (voir les précautions).
 
 ### Étape 5 : hétérogénéité et robustesse
 
@@ -422,7 +423,7 @@ Sur les 10 cryptos, avec δ = 1,5 σ.
 
 - **Période** : tout calculer sur `panel.loc[START:]`, sans la chauffe.
 - **Tests statistiques** : les fenêtres de 24 h se chevauchent, donc la cible est très autocorrélée. Un t-test ou un χ² naïf surestime la significativité. On s'en tient aux graphiques et aux intervalles, ou on raisonne en épisodes.
-- **Pas de regard sur la période de test** : si l'analyse sert à choisir des seuils ou des variables, elle se fait seulement sur la période d'entraînement.
+- **Pas de regard sur la période de test** : si l'analyse sert à choisir des seuils ou des variables, elle se fait seulement sur la période d'entraînement. Les étapes 3 et 4 ont été faites sur toute la période : une fois le découpage fixé, il faudra vérifier sur la seule période d'entraînement que δ = 1,5 σ reste un bon choix et que le ratio des gros traders en positions reste le signal le plus net (par exemple en refaisant `part_episodes_par_decile` sur `panel.loc[:fin_entrainement]`).
 
 ### Priorités
 
