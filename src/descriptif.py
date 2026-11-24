@@ -1,5 +1,6 @@
 """Statistiques et graphiques descriptifs appelés par rapport.ipynb."""
 
+import textwrap
 from pathlib import Path
 from statistics import NormalDist
 
@@ -8,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from src.cible import HORIZON, ajouter_cible
-from src.config import START, SYMBOLS
+from src.config import START, SYMBOLS, SYMBOLS_DESCRIPTIF
 from src.panel_binance import PANEL_FILE
 from src.panel_bybit import PANEL_FUSION_FILE
 from src.stockage import lire_public
@@ -27,9 +28,6 @@ NOMS_POSITIONNEMENT = {
     "taker_bougies": "Ratio taker",
     "basis": "Basis (%)",
 }
-# Valeur de référence tracée sur chaque histogramme (0,01 % par 8 h : taux de funding par défaut de Binance)
-REPERES = {"funding_8h": 0.01, "variation_oi_24h": 0, "ls_global": 1, "ls_top_comptes": 1,
-           "ls_top_positions": 1, "taker_bougies": 1, "basis": 0}
 EVENEMENTS = {"2024-01-10": "ETF bitcoin au comptant", "2024-11-05": "Élection américaine",
               "2025-10-10": "Krach du 10 octobre"}
 
@@ -74,25 +72,6 @@ def mois_de_la_bougie(panel: pd.DataFrame) -> pd.Index:
     return (panel.index - pd.Timedelta("1h")).strftime("%Y-%m").rename("mois")
 
 
-def manquants_par_mois(panel: pd.DataFrame) -> pd.DataFrame:
-    """Part des heures (en %) où au moins une colonne manque, par crypto et par mois."""
-    heure_incomplete = panel.drop(columns="symbol").isna().any(axis=1)
-    return heure_incomplete.groupby([panel["symbol"], mois_de_la_bougie(panel)]).mean().unstack() * 100
-
-
-def graphique_manquants(manquants: pd.DataFrame) -> None:
-    """Carte crypto × mois de la part d'heures incomplètes."""
-    fig, ax = plt.subplots(figsize=(14, 0.6 * len(manquants) + 1.5))
-    image = ax.imshow(manquants, cmap="Blues", vmin=0, aspect="auto")
-
-    ax.set_yticks(range(len(manquants)), manquants.index)
-    tous_les_6_mois = range(0, manquants.shape[1], 6)
-    ax.set_xticks(tous_les_6_mois, manquants.columns[tous_les_6_mois])
-    fig.colorbar(image, ax=ax, label="Heures incomplètes (%)")
-    ax.set_title("Heures où au moins une variable manque, par mois")
-    plt.show()
-
-
 def comparer_taker(panel: pd.DataFrame) -> pd.DataFrame:
     """Compare, par crypto, le ratio taker des bougies à celui des relevés à 5 minutes."""
     lignes = {}
@@ -107,28 +86,6 @@ def comparer_taker(panel: pd.DataFrame) -> pd.DataFrame:
             "Même côté de 1 (%)": ((bougies > 1) == (releves > 1)).mean() * 100,
         }
     return pd.DataFrame(lignes).T
-
-
-def graphique_taker(panel: pd.DataFrame) -> None:
-    """Nuage du ratio taker des relevés contre celui des bougies, une case par crypto."""
-    nb_cryptos = panel["symbol"].nunique()
-    fig, axes = plt.subplots(1, nb_cryptos, figsize=(5 * nb_cryptos, 5), sharex=True, sharey=True)
-
-    for ax, (symbole, crypto) in zip(axes, panel.groupby("symbol")):
-        ax.scatter(taker_ratio_bougies(crypto), crypto["taker_ratio"], s=1, alpha=0.15, color=COULEURS[symbole])
-        ax.axline((1, 1), slope=1, color="black", linestyle="--", linewidth=1, label="Égalité")
-        ax.axhline(1, color="grey", linewidth=0.8)
-        ax.axvline(1, color="grey", linewidth=0.8)
-        # Les quelques ratios au-delà de 3 écraseraient le nuage
-        ax.set_xlim(0, 3)
-        ax.set_ylim(0, 3)
-        ax.set_title(symbole)
-        ax.set_xlabel("Ratio taker des bougies (1 h)")
-        ax.legend(loc="upper left")
-
-    axes[0].set_ylabel("Ratio taker des relevés (moyenne des 5 min)")
-    fig.tight_layout()
-    plt.show()
 
 
 def tableau_cryptos(panel: pd.DataFrame) -> pd.DataFrame:
@@ -167,43 +124,23 @@ def queues_rendements(panel: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(lignes).T
 
 
-def graphique_qqplot(panel: pd.DataFrame, variable=rendements_horaires, nom: str = "rendements horaires") -> None:
-    """QQ-plot d'une variable centrée réduite contre une loi normale, une couleur par crypto."""
-    fig, ax = plt.subplots(figsize=(7, 6))
+def graphique_qqplot(panel: pd.DataFrame, variables: dict) -> None:
+    """QQ-plots contre une loi normale, une case par variable ({nom: fonction}) et une couleur par crypto."""
+    fig, axes = plt.subplots(1, len(variables), figsize=(7 * len(variables), 6))
 
-    for symbole, crypto in panel.groupby("symbol"):
-        valeurs = variable(crypto).dropna()
-        centres_reduits = np.sort((valeurs - valeurs.mean()) / valeurs.std())
-        probabilites = (np.arange(len(centres_reduits)) + 0.5) / len(centres_reduits)
-        quantiles_normaux = [NormalDist().inv_cdf(p) for p in probabilites]
-        ax.plot(quantiles_normaux, centres_reduits, ".", markersize=3, color=COULEURS[symbole], label=symbole)
-
-    ax.axline((0, 0), slope=1, color="grey", linestyle="--", linewidth=1, label="Loi normale")
-    ax.set_xlabel("Quantiles d'une loi normale")
-    ax.set_ylabel(f"Quantiles des {nom} (en écarts-types)")
-    ax.set_title(f"QQ-plot des {nom}")
-    ax.legend()
-    plt.show()
-
-
-def ratio_perp_spot_mensuel(panel: pd.DataFrame) -> pd.DataFrame:
-    """Volume mensuel du perpétuel rapporté au volume spot, une colonne par crypto."""
-    volumes = panel.groupby([panel["symbol"], mois_de_la_bougie(panel)])[["quote_volume", "spot_quote_volume"]].sum()
-    ratio = volumes["quote_volume"] / volumes["spot_quote_volume"]
-    return ratio.unstack("symbol")
-
-
-def graphique_perp_spot(ratio: pd.DataFrame) -> None:
-    """Évolution du rapport volume perpétuel / volume spot."""
-    fig, ax = plt.subplots(figsize=(12, 4.5))
-    for symbole in ratio.columns:
-        ax.plot(pd.to_datetime(ratio.index), ratio[symbole], linewidth=2, color=COULEURS[symbole], label=symbole)
-
-    ax.set_ylim(bottom=0)
-    ax.set_ylabel("Volume perpétuel / volume spot")
-    ax.set_title("Le perpétuel échange plusieurs fois le volume du spot")
-    ax.grid(axis="y", alpha=0.3)
-    ax.legend()
+    for ax, (nom, variable) in zip(axes, variables.items()):
+        for symbole, crypto in panel.groupby("symbol"):
+            valeurs = variable(crypto).dropna()
+            centres_reduits = np.sort((valeurs - valeurs.mean()) / valeurs.std())
+            probabilites = (np.arange(len(centres_reduits)) + 0.5) / len(centres_reduits)
+            quantiles_normaux = [NormalDist().inv_cdf(p) for p in probabilites]
+            ax.plot(quantiles_normaux, centres_reduits, ".", markersize=3, color=COULEURS[symbole], label=symbole)
+        ax.axline((0, 0), slope=1, color="grey", linestyle="--", linewidth=1, label="Loi normale")
+        ax.set_xlabel("Quantiles d'une loi normale")
+        ax.set_ylabel(f"Quantiles des {nom} (en écarts-types)")
+        ax.set_title(f"QQ-plot des {nom}")
+    axes[0].legend()
+    fig.tight_layout()
     plt.show()
 
 
@@ -249,27 +186,6 @@ def medianes_par_an(variables: pd.DataFrame) -> pd.DataFrame:
     annee = mois_de_la_bougie(variables).str[:4].rename("année")
     medianes = variables.groupby([variables["symbol"], annee]).median()
     return medianes.rename(columns=NOMS_POSITIONNEMENT)
-
-
-def graphique_distributions(variables: pd.DataFrame) -> None:
-    """Histogramme de chaque variable, une courbe par crypto, entre les quantiles à 1 et 99 %."""
-    fig, axes = plt.subplots(2, 4, figsize=(18, 8))
-
-    for ax, (nom, libelle) in zip(axes.flat, NOMS_POSITIONNEMENT.items()):
-        # Sans couper les 1 % extrêmes de chaque côté, quelques valeurs aberrantes écraseraient l'histogramme
-        bornes = variables[nom].quantile([0.01, 0.99])
-        for symbole, crypto in variables.groupby("symbol"):
-            ax.hist(crypto[nom], bins=60, range=tuple(bornes), density=True, histtype="step",
-                    linewidth=1.5, color=COULEURS[symbole], label=symbole)
-        ax.axvline(REPERES[nom], color="black", linestyle="--", linewidth=1)
-        ax.set_title(libelle)
-        ax.set_yticks([])
-
-    axes.flat[-1].legend(*axes.flat[0].get_legend_handles_labels(), loc="center", fontsize=12)
-    axes.flat[-1].axis("off")
-    fig.suptitle("Distribution des variables de positionnement (densité, tirets : valeur de référence)")
-    fig.tight_layout()
-    plt.show()
 
 
 def graphique_series(panel: pd.DataFrame, variables: pd.DataFrame) -> None:
@@ -320,7 +236,10 @@ def graphique_correlations(variables: pd.DataFrame) -> None:
         image = ax.imshow(correlations, cmap="RdBu_r", vmin=-1, vmax=1)
         for i in range(len(correlations)):
             for j in range(len(correlations)):
-                ax.text(j, i, f"{correlations.iloc[i, j]:.2f}", ha="center", va="center", fontsize=8)
+                valeur = correlations.iloc[i, j]
+                # Texte blanc sur les cases foncées, sinon il ne se lit pas
+                ax.text(j, i, f"{valeur:.2f}", ha="center", va="center", fontsize=8,
+                        color="white" if abs(valeur) > 0.6 else "black")
         ax.set_xticks(range(len(libelles)), libelles, rotation=45, ha="right")
         ax.set_yticks(range(len(libelles)), libelles if ax is axes[0] else [])
         ax.set_title(symbole)
@@ -370,7 +289,6 @@ VARIANTES = {
     "Horizon 12 h": {"horizon": 12},
     "Horizon 48 h": {"horizon": 48},
 }
-JOURS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
 
 
 def tableau_episodes(panel_cible: pd.DataFrame, horizon: int = HORIZON) -> pd.DataFrame:
@@ -414,30 +332,61 @@ def frequence_cible(panel_cible: pd.DataFrame, episodes_cible: pd.DataFrame) -> 
     return frequence
 
 
+def graphique_episodes_par_annee(episodes_cible: pd.DataFrame) -> None:
+    """Nombre d'épisodes par année, empilés par crypto, avec le total au-dessus de chaque barre."""
+    annee = (episodes_cible["debut"] - pd.Timedelta("1h")).dt.year.rename("année")
+    nombres = episodes_cible.groupby([annee, "symbol"]).size().unstack(fill_value=0)
+    nombres = nombres[[s for s in SYMBOLS if s in nombres.columns]]
+
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    bas = np.zeros(len(nombres))
+    for symbole in nombres.columns:
+        ax.bar(nombres.index.astype(str), nombres[symbole], bottom=bas, color=COULEURS[symbole],
+               label=symbole.replace("USDT", ""))
+        bas += nombres[symbole].to_numpy()
+    for x, total in enumerate(bas):
+        ax.text(x, total + 0.5, f"{total:.0f}", ha="center", fontweight="bold")
+
+    ax.set_ylim(0, bas.max() * 1.15)
+    ax.set_ylabel("Nombre d'épisodes")
+    ax.set_title(f"{len(episodes_cible)} épisodes de squeeze, très inégalement répartis dans le temps (2026 : jusqu'en septembre)")
+    ax.grid(axis="y", alpha=0.3)
+    ax.legend(ncols=2, fontsize=9, bbox_to_anchor=(1.01, 1), loc="upper left")
+    fig.tight_layout()
+    plt.show()
+
+
 def entonnoir(panel_cible: pd.DataFrame) -> pd.DataFrame:
     """Nombre d'heures qui passent chaque étape C1 → C1+C2 → C1+C2+C3, par crypto."""
     connues = panel_cible.dropna(subset="shortsqueeze")
     c1 = connues["c1"]
     etapes = pd.DataFrame({
-        "C1 :\nforte hausse": c1,
-        "C1 et\nopen interest en hausse": c1 & (connues["variation_oi"] > 0),
-        "C1 + C2 :\nbaisse de l'open interest": c1 & connues["c2"],
-        "C1 + C2 + C3 :\nshort squeeze": connues["shortsqueeze"],
+        "C1 : forte hausse": c1,
+        "C1 et open interest en hausse": c1 & (connues["variation_oi"] > 0),
+        "C1 + C2 : baisse de l'open interest": c1 & connues["c2"],
+        "C1 + C2 + C3 : short squeeze": connues["shortsqueeze"],
     })
     return etapes.groupby(connues["symbol"]).sum()
 
 
+def entonnoir_trois_grosses(nombres: pd.DataFrame) -> pd.DataFrame:
+    """Entonnoir additionné pour BTC, ETH et SOL d'un côté, pour les sept autres cryptos de l'autre."""
+    trois_grosses = nombres.index.isin(SYMBOLS_DESCRIPTIF)
+    return pd.DataFrame({"BTC, ETH, SOL": nombres[trois_grosses].sum(),
+                         "7 autres cryptos": nombres[~trois_grosses].sum()}).T
+
+
 def graphique_entonnoir(nombres: pd.DataFrame) -> None:
-    """Part des heures C1 (en %) qui passent chaque étape, une barre par crypto."""
+    """Part des heures C1 (en %) qui passent chaque étape, une barre par ligne du tableau (crypto ou groupe)."""
     parts = 100 * nombres.div(nombres.iloc[:, 0], axis=0)
     fig, ax = plt.subplots(figsize=(11, 4.5))
     largeur = 0.8 / len(parts)
     for i, (symbole, ligne) in enumerate(parts.iterrows()):
         positions = np.arange(len(ligne)) + i * largeur
-        barres = ax.bar(positions, ligne, width=largeur, color=COULEURS[symbole], label=symbole)
+        barres = ax.bar(positions, ligne, width=largeur, color=COULEURS.get(symbole), label=symbole)
         ax.bar_label(barres, labels=[f"{n:,}".replace(",", " ") for n in nombres.loc[symbole]], fontsize=8)
 
-    ax.set_xticks(np.arange(len(parts.columns)) + 0.4 - largeur / 2, parts.columns)
+    ax.set_xticks(np.arange(len(parts.columns)) + 0.4 - largeur / 2, [textwrap.fill(c, 25) for c in parts.columns])
     ax.set_ylabel("Part des heures C1 (%)")
     ax.set_title("Parmi les fortes hausses, combien sont des rachats de shorts ? (nombre d'heures au-dessus des barres)")
     ax.grid(axis="y", alpha=0.3)
@@ -455,29 +404,6 @@ def simultaneite(panel_cible: pd.DataFrame) -> pd.DataFrame:
     au_moins_une_autre = positives.sum(axis=1) >= 2
     parts["Au moins une autre"] = [100 * au_moins_une_autre[positives[s] == 1].mean() for s in positives]
     return parts
-
-
-def graphique_calendrier(episodes_cible: pd.DataFrame) -> None:
-    """Heure UTC et jour de la semaine du pic de chaque épisode, toutes cryptos confondues."""
-    # Le pic a lieu pendant la bougie qui finit à date_pic : on prend l'heure de début de cette bougie
-    debut_bougie_pic = episodes_cible["date_pic"] - pd.Timedelta("1h")
-    heures = debut_bougie_pic.dt.hour.value_counts().reindex(range(24), fill_value=0)
-    jours = debut_bougie_pic.dt.dayofweek.value_counts().reindex(range(7), fill_value=0)
-
-    fig, (ax_heure, ax_jour) = plt.subplots(1, 2, figsize=(14, 4), width_ratios=[2, 1])
-    ax_heure.bar(heures.index, heures, color="grey")
-    for heure_funding in [0, 8, 16]:
-        ax_heure.axvline(heure_funding - 0.5, color="black", linestyle="--", linewidth=1)
-    ax_heure.set_xticks(range(0, 24, 2))
-    ax_heure.set_xlabel("Heure UTC du pic (tirets : paiements de funding)")
-    ax_heure.set_ylabel("Nombre d'épisodes")
-
-    ax_jour.bar(JOURS, jours, color="grey")
-    ax_jour.tick_params(axis="x", rotation=45)
-    ax_jour.set_xlabel("Jour du pic")
-    fig.suptitle(f"Quand ont lieu les pics des {len(episodes_cible)} épisodes ?")
-    fig.tight_layout()
-    plt.show()
 
 
 def profil_episodes(episodes_cible: pd.DataFrame) -> pd.DataFrame:
@@ -528,29 +454,30 @@ def sensibilite(panel_complet: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(lignes).T.unstack().reindex(list(VARIANTES))
 
 
-def graphique_episode(panel_cible: pd.DataFrame, symbole: str, debut: str) -> None:
-    """Prix, open interest, funding et ratio long/short de 3 jours avant à 1 jour après le pic d'un épisode."""
-    crypto = panel_cible.loc[panel_cible["symbol"] == symbole]
-    debut = pd.Timestamp(debut, tz="UTC")
-    pic = crypto.loc[debut, "date_pic"]
-    fenetre = crypto.loc[debut - pd.Timedelta("3D"): pic + pd.Timedelta("1D")]
+def graphique_exemples(panel_cible: pd.DataFrame, exemples: list[tuple[str, str]]) -> None:
+    """Prix, open interest, funding et ratio long/short autour d'épisodes donnés par (crypto, début), une colonne par épisode."""
+    noms_series = ["Prix (USDT)", "Open interest (en crypto)", "Funding (% par 8 h)", "L/S tous comptes"]
+    fig, axes = plt.subplots(len(noms_series), len(exemples), figsize=(8 * len(exemples), 10), sharex="col")
 
-    series = {
-        "Prix (USDT)": fenetre["close"],
-        "Open interest (en crypto)": fenetre["oi"],
-        "Funding (% par 8 h)": fenetre["funding_horaire"] * 8 * 100,
-        "L/S tous comptes": fenetre["ls_global"],
-    }
-    fig, axes = plt.subplots(len(series), 1, figsize=(13, 10), sharex=True)
-    for ax, (titre, serie) in zip(axes, series.items()):
-        ax.plot(serie.index, serie, color=COULEURS[symbole])
-        ax.axvline(debut, color="crimson", linestyle="--", linewidth=1)
-        ax.axvline(pic, color="black", linestyle="--", linewidth=1)
-        ax.set_title(titre, loc="left")
-        ax.grid(axis="y", alpha=0.3)
-    axes[2].axhline(0.01, color="grey", linestyle=":", linewidth=1)
-    axes[3].axhline(1, color="grey", linestyle=":", linewidth=1)
-    fig.suptitle(f"{symbole} : épisode qui commence le {debut:%Y-%m-%d %H:%M} (rouge), pic le {pic:%Y-%m-%d %H:%M} (noir)")
+    for colonne, (symbole, debut) in enumerate(exemples):
+        crypto = panel_cible.loc[panel_cible["symbol"] == symbole]
+        debut = pd.Timestamp(debut, tz="UTC")
+        pic = crypto.loc[debut, "date_pic"]
+        fenetre = crypto.loc[debut - pd.Timedelta("3D"): pic + pd.Timedelta("1D")]
+        series = [fenetre["close"], fenetre["oi"], fenetre["funding_horaire"] * 8 * 100, fenetre["ls_global"]]
+
+        for ligne, (nom, serie) in enumerate(zip(noms_series, series)):
+            ax = axes[ligne, colonne]
+            ax.plot(serie.index, serie, color=COULEURS[symbole])
+            ax.axvline(debut, color="crimson", linestyle="--", linewidth=1)
+            ax.axvline(pic, color="black", linestyle="--", linewidth=1)
+            ax.set_title(f"{symbole.replace('USDT', '')} : {nom}", loc="left")
+            ax.grid(axis="y", alpha=0.3)
+        axes[2, colonne].axhline(0.01, color="grey", linestyle=":", linewidth=1)  # taux de funding par défaut
+        axes[3, colonne].axhline(1, color="grey", linestyle=":", linewidth=1)
+        axes[-1, colonne].tick_params(axis="x", rotation=30)
+
+    fig.suptitle("Deux squeezes de janvier 2023 : début de l'épisode (tirets rouges) et pic (tirets noirs)")
     fig.tight_layout()
     plt.show()
 
@@ -640,27 +567,25 @@ def rendement_par_decile(panel: pd.DataFrame, variable: str) -> pd.DataFrame:
     return resultats.reset_index()
 
 
-def graphique_taux_par_decile(taux: pd.DataFrame, nom_variable: str) -> None:
-    """Carte crypto × décile du taux de squeeze, avec une ligne pour l'ensemble des cryptos."""
-    carte = taux.pivot(index="symbol", columns="decile", values="taux_pct").reindex(columns=range(1, 11))
-    carte = carte.reindex([s for s in SYMBOLS if s in carte.index])
-    # Les déciles sont calculés crypto par crypto : chaque crypto pèse autant dans la ligne « Ensemble »
-    ensemble = taux.groupby("decile")[["heures_positives", "heures"]].sum()
-    carte.loc["Ensemble"] = 100 * ensemble["heures_positives"] / ensemble["heures"]
+def tableau_taux_par_decile(taux: pd.DataFrame) -> pd.DataFrame:
+    """Taux de squeeze (%) par crypto (lignes) et par décile (colonnes), avec une ligne pour l'ensemble."""
+    tableau = taux.pivot(index="symbol", columns="decile", values="taux_pct").reindex(columns=range(1, 11))
+    tableau = tableau.reindex([s for s in SYMBOLS if s in tableau.index])
+    tableau.loc["Ensemble"] = taux_ensemble(taux)
+    return tableau
 
-    fig, ax = plt.subplots(figsize=(10, 0.45 * len(carte) + 1.5))
-    image = ax.imshow(carte, cmap="Reds", vmin=0, aspect="auto")
-    for i in range(carte.shape[0]):
-        for j in range(carte.shape[1]):
-            if not np.isnan(carte.iloc[i, j]):
-                ax.text(j, i, f"{carte.iloc[i, j]:.1f}", ha="center", va="center", fontsize=8)
-    ax.set_xticks(range(10), range(1, 11))
-    ax.set_yticks(range(len(carte)), carte.index)
-    ax.set_xlabel(f"Décile de {nom_variable} (1 = valeurs les plus basses)")
-    fig.colorbar(image, ax=ax, label="Heures suivies d'un squeeze (%)")
-    ax.set_title(f"Taux de squeeze selon {nom_variable}")
-    fig.tight_layout()
-    plt.show()
+
+def taux_ensemble(taux: pd.DataFrame) -> pd.Series:
+    """Taux de squeeze (%) par décile, toutes cryptos ensemble."""
+    # Les déciles sont calculés crypto par crypto : chaque crypto pèse autant dans chaque décile
+    ensemble = taux.groupby("decile")[["heures_positives", "heures"]].sum()
+    return 100 * ensemble["heures_positives"] / ensemble["heures"]
+
+
+def taux_par_decile_toutes_variables(panel: pd.DataFrame, noms: dict) -> pd.DataFrame:
+    """Taux de squeeze (%) par décile de chaque variable, toutes cryptos ensemble (une ligne par variable)."""
+    lignes = {libelle: taux_ensemble(taux_squeeze_par_decile(panel, nom)) for nom, libelle in noms.items()}
+    return pd.DataFrame(lignes).T.reindex(columns=range(1, 11))
 
 
 def graphique_rendement_par_decile(rendements: pd.DataFrame, nom_variable: str) -> None:
@@ -678,9 +603,10 @@ def graphique_rendement_par_decile(rendements: pd.DataFrame, nom_variable: str) 
         ax.set_xlabel(f"Décile de {nom_variable}")
     for ax in axes[:, 0]:
         ax.set_ylabel("Rendement à 24 h (%)")
-    axes[0, 0].legend()
+    # Une seule légende sous le titre, pour ne cacher aucune courbe
+    fig.legend(*axes[0, 0].get_legend_handles_labels(), loc="upper center", ncols=3, bbox_to_anchor=(0.5, 0.96))
     fig.suptitle(f"Rendement des 24 h suivantes selon {nom_variable}")
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
     plt.show()
 
 

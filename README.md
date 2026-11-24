@@ -391,7 +391,7 @@ Les prix sont quasiment identiques : les deux sources sont bien alignées dans l
 - **13 épisodes sur 16 en 2023**, aucun en 2025 et un seul en 2026. Une période de test sur 2025-2026 ne contiendrait presque aucun squeeze : le découpage de validation devra en tenir compte.
 - **Entonnoir** : plus de la moitié des fortes hausses (C1) se font avec un open interest en hausse, donc de nouveaux longs. C2 ne garde que 6 à 13 % des heures C1. C3 n'enlève presque rien.
 - **Simultanéité** : 7 épisodes sur 16 tombent dans trois mouvements de marché (13-14 janvier 2023, mars 2023 après SVB, fin février 2024).
-- **Calendrier** : aucun effet visible de l'heure, et trop peu d'épisodes pour conclure sur le jour de la semaine.
+- **Calendrier** : aucun effet visible de l'heure, et trop peu d'épisodes pour conclure sur le jour de la semaine. Retiré du rapport pour rester à 12 graphiques.
 - **Sensibilité** : δ est le seuil décisif (avec δ = 5 %, environ trois fois plus d'épisodes ; avec δ = 15 %, aucun pour BTC). Le plancher de 5 % ne joue presque jamais. L'étape 4 utilise δ = 1,5 écart-type des variations d'open interest, de même sévérité pour chaque crypto, avec δ = 1,2 σ en contrôle.
 
 ### Étape 4 : positionnement et squeezes, première réponse à H1/H2
@@ -410,6 +410,7 @@ Sur les 10 cryptos, avec δ = 1,5 σ.
 - **Étude d'événement** : avant un squeeze, le prix baisse, l'open interest monte (+2,5 %), le funding est négatif et les gros traders se placent à la baisse, un à trois jours avant le pic ; puis l'open interest chute de 7 % pendant la hausse. Les fortes hausses sans rachat ont le profil inverse (open interest et funding en hausse).
 - **Déciles** : le ratio des gros traders en positions donne le gradient le plus net (28 % des épisodes dans son premier décile) et n'est presque pas corrélé au prix. Le funding négatif et l'open interest en hausse, réunis, multiplient le taux de squeeze par presque quatre.
 - **Le prix compte beaucoup** : 42 % des épisodes commencent après les pires rendements sur 7 jours. Le modèle « prix seuls » sera exigeant.
+- **Entonnoir avec la cible finale** : l'open interest monte pendant 74 % des fortes hausses des sept petites cryptos (57 % pour BTC, ETH et SOL). C3 n'écarte que 2 % des heures C1 + C2 des trois grosses, mais 49 % de celles des sept autres.
 - **H1 n'est pas soutenue** (rendement médian inchangé), **H2 l'est**. Le lien avec la volatilité est en partie mécanique (C1 exprimée en σ).
 - **Limite** : ces constats portent sur toute la période, 2025-2026 comprise, et ont servi à choisir δ = 1,5 σ et la variable clé. Ces deux choix seront vérifiés sur la seule période d'entraînement (voir les précautions).
 
@@ -418,6 +419,17 @@ Sur les 10 cryptos, avec δ = 1,5 σ.
 - **Par crypto** (BTC et ETH contre petites cryptos), **par année** et **par niveau de Fear & Greed**.
 - **Binance contre Bybit** sur les 10 cryptos : retrouve-t-on les mêmes faits ? C3 ne peut pas être refaite sur Bybit.
 - **δ = 1,2 σ** : les constats de l'étape 4 tiennent-ils avec une cible moins stricte, qui compte plus d'épisodes en 2025-2026 ?
+
+### Graphiques du rapport : 12 au maximum
+
+Le rapport se limite à 12 graphiques, chacun commenté ; le reste est présenté en tableaux. Les étapes 1 à 4 en utilisent 9, il en reste **3 pour l'étape 5**.
+
+| Étape | Graphiques |
+|---|---|
+| 1. Données et univers | aucun : valeurs manquantes, ratio taker, queues des rendements et volume perpétuel / spot sont en tableaux |
+| 2. Positionnement | séries 2023-2026 ; corrélations entre variables |
+| 3. La cible | QQ-plots des rendements et de l'open interest (seuils de C1 et C2 en σ) ; deux exemples de squeeze, BTC et SOL |
+| 4. Positionnement et squeezes | épisodes par année ; entonnoir (BTC, ETH, SOL contre les 7 autres) ; étude d'événement ; part des épisodes par décile (positionnement et prix) ; rendement à 24 h par décile (H1). Le taux de squeeze par décile, en heures, est en tableau |
 
 ### Précautions
 
