@@ -29,9 +29,19 @@ def delai_du_pic(high: pd.Series, horizon: int) -> np.ndarray:
     return delai
 
 
+def sigma_oi_30j(oi: pd.Series, horizon: int = HORIZON) -> pd.Series:
+    """Écart-type des variations relatives de l'open interest sur `horizon` heures, sur les 30 derniers jours."""
+    # Calculé directement sur l'horizon : σ horaire × √24 le sous-estime, car les variations d'OI se prolongent
+    return oi.pct_change(horizon, fill_method=None).rolling("30D").std()
+
+
 def cible_crypto(crypto: pd.DataFrame, k: float = K_SIGMA, plancher: float = PLANCHER,
-                 delta: float = DELTA_OI, horizon: int = HORIZON) -> pd.DataFrame:
-    """Conditions C1, C2, C3 et grandeurs qui servent à les tester, pour chaque heure t d'une crypto."""
+                 delta: float = DELTA_OI, horizon: int = HORIZON,
+                 delta_sigma: float | None = None) -> pd.DataFrame:
+    """Conditions C1, C2, C3 et grandeurs qui servent à les tester, pour chaque heure t d'une crypto.
+
+    Avec `delta_sigma`, la baisse d'open interest exigée par C2 vaut delta_sigma écarts-types au lieu de delta.
+    """
     close = crypto["close"]
     rendements = np.log(close / close.shift(1))
     sigma_30j = rendements.rolling("30D").std()  # rendements horaires de t-30j (exclu) à t
@@ -51,6 +61,7 @@ def cible_crypto(crypto: pd.DataFrame, k: float = K_SIGMA, plancher: float = PLA
 
     cible = pd.DataFrame({
         "sigma_30j": sigma_30j,
+        "sigma_oi_30j": sigma_oi_30j(crypto["oi"], horizon),
         "date_pic": crypto.index + pd.to_timedelta(delai, unit="h"),
         "delai_pic_h": delai,
         "hausse_pic": hausse_pic.where(connue),
@@ -59,7 +70,8 @@ def cible_crypto(crypto: pd.DataFrame, k: float = K_SIGMA, plancher: float = PLA
     })
     # La volatilité est ramenée à l'horizon : σ horaire × √horizon
     cible["c1"] = cible["hausse_pic"] >= np.maximum(k * sigma_30j * np.sqrt(horizon), plancher)
-    cible["c2"] = cible["variation_oi"] <= -delta
+    baisse_oi_exigee = delta if delta_sigma is None else delta_sigma * cible["sigma_oi_30j"]
+    cible["c2"] = cible["variation_oi"] <= -baisse_oi_exigee
     cible["c3"] = cible["ratio_achats_ventes"] > 1
     cible["shortsqueeze"] = cible["c1"] & cible["c2"] & cible["c3"]
     # Sans futur, la cible est inconnue (NA) et non fausse
@@ -69,9 +81,10 @@ def cible_crypto(crypto: pd.DataFrame, k: float = K_SIGMA, plancher: float = PLA
 
 
 def ajouter_cible(panel: pd.DataFrame, k: float = K_SIGMA, plancher: float = PLANCHER,
-                  delta: float = DELTA_OI, horizon: int = HORIZON) -> pd.DataFrame:
+                  delta: float = DELTA_OI, horizon: int = HORIZON,
+                  delta_sigma: float | None = None) -> pd.DataFrame:
     """Panel complété des colonnes de la cible, calculées crypto par crypto."""
-    return pd.concat([crypto.join(cible_crypto(crypto, k, plancher, delta, horizon))
+    return pd.concat([crypto.join(cible_crypto(crypto, k, plancher, delta, horizon, delta_sigma))
                       for _, crypto in panel.groupby("symbol")])
 
 
