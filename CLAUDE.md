@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-Projet ENSAE 2A (groupe de 3, rendu début décembre 2026) : prédire un short squeeze à 24 h sur les perpétuels USDT Binance (10 cryptos pour l'instant, 2023-01-01 au 2026-09-30) à partir du positionnement (funding, OI, ratios long/short, ratio taker). Hypothèses : H1 (shorts informés) contre H2 (shorts fragiles). Réponse statistique (PR-AUC face à une base naïve et à un modèle « prix seuls ») et réponse économique (backtest après frais et funding).
+Projet ENSAE 2A (groupe de 3, rendu début décembre 2026) : prédire un short squeeze à 24 h sur les perpétuels USDT Binance (10 cryptos pour l'instant, 2023-01-01 au 2026-09-30) à partir du positionnement (funding, OI, ratios long/short, ratio taker). Hypothèses : H1 (shorts informés) contre H2 (shorts fragiles). Réponse par l'analyse descriptive (étapes 1 à 5 de `rapport.ipynb`). Le modèle de prévision (PR-AUC face à une base naïve et à un modèle « prix seuls ») et le backtest prévus au départ sont abandonnés : non demandés pour l'ENSAE.
 
-La note porte sur les données, l'analyse descriptive, la démarche et la reproductibilité. Le modèle n'est pas noté pour lui-même. `rapport.ipynb` doit tourner sans erreur depuis un environnement vierge.
+La note porte sur les données, l'analyse descriptive, la démarche et la reproductibilité. La modélisation ne fait pas partie du barème ENSAE. `rapport.ipynb` doit tourner sans erreur depuis un environnement vierge.
 
 ## Conventions
 - Environnement uv avec Python 3.12. Tout se lance par `uv run ...`. Après `uv add`, régénérer `requirements.txt` avec `uv export --no-hashes --no-dev > requirements.txt`.
