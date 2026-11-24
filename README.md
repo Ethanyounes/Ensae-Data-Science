@@ -28,9 +28,7 @@ Variantes testées : k = 2,5 ou 4 ; plancher de 3 ou 8 % ; δ = 5 ou 15 %, ou 1,
 
 **Cible retenue à partir de l'étape 4** : δ = 1,5 σ, avec δ = 1,2 σ en contrôle. Exprimer C2 en écarts-types, comme C1, lui donne la même sévérité pour chaque crypto, ce que ne fait pas un seuil fixe (voir la section 3 du rapport).
 
-**La réponse comporte deux volets :**
-- **statistique** : le positionnement bat-il une base naïve, et un modèle qui n'utilise que les prix (PR-AUC) ?
-- **économique** : ce gain reste-t-il rentable une fois les frais et le funding payés (backtest) ?
+**Démarche.** Les consignes de l'ENSAE ne demandent pas de modèle : on répond à la question par l'analyse descriptive. Le positionnement change-t-il de façon visible avant les squeezes, et ces signaux tiennent-ils partout ? Le projet prévoyait au départ un modèle de prévision (PR-AUC face à une base naïve et à un modèle « prix seuls ») et un backtest après frais et funding. Ils restent des prolongements possibles, non réalisés.
 
 ## Installation et reproduction
 
@@ -69,10 +67,6 @@ src/
   panel_fng.py         nettoyage de l'indice Fear & Greed et rattachement au panel horaire
   cible.py             cible : conditions C1, C2, C3 et squeeze, seuils en paramètres
   descriptif.py        statistiques et graphiques descriptifs (étapes 1 à 3)
-  -- à venir --
-  variables.py         construction des variables                         (C)
-  modeles.py           base naïve, logit, LightGBM, validation temporelle
-  strategie.py         backtest avec frais et funding
 scripts/
   choisir_cryptos.py       applique la règle de choix des cryptos (open interest de décembre 2022)
   telecharger_binance.py   télécharge toutes les archives Binance (SYMBOLS × types)
@@ -188,7 +182,7 @@ Une seule requête (`limit=0`) renvoie tout l'historique depuis le 2018-02-01 : 
 
 ## Convention de temps
 
-Le panel a une ligne par crypto et par heure t (UTC). **La ligne t contient uniquement ce qui est connu à l'instant t.** Toutes les sources sont ramenées à cette règle avant la fusion, et toute la suite du projet (cible, variables, validation) s'appuie dessus.
+Le panel a une ligne par crypto et par heure t (UTC). **La ligne t contient uniquement ce qui est connu à l'instant t.** Toutes les sources sont ramenées à cette règle avant la fusion, et toute la suite du projet (cible, variables, analyse) s'appuie dessus.
 
 ### Pourquoi c'est nécessaire
 
@@ -350,7 +344,7 @@ Les prix sont quasiment identiques : les deux sources sont bien alignées dans l
 
 ## Analyse descriptive
 
-**Objectif.** Montrer que la cible est rare et groupée dans le temps, décrire les variables de positionnement, puis voir si le positionnement diffère déjà avant un squeeze. Cette dernière étape donne une première réponse à H1 contre H2, sans modèle. Le code est dans `src/descriptif.py`, appelé par `rapport.ipynb`. Chaque graphique y est commenté et relié à la question.
+**Objectif.** Montrer que la cible est rare et groupée dans le temps, décrire les variables de positionnement, puis voir si le positionnement diffère déjà avant un squeeze. Cette dernière étape, complétée par l'étape 5, donne la réponse du projet à H1 contre H2, sans modèle. Le code est dans `src/descriptif.py`, appelé par `rapport.ipynb`. Chaque graphique y est commenté et relié à la question.
 
 | Étape | Question | Données nécessaires |
 |---|---|---|
@@ -372,12 +366,12 @@ Les prix sont quasiment identiques : les deux sources sont bien alignées dans l
 
 - **Distributions** : funding (forte masse attendue au taux par défaut de Binance, 0,01 % par 8 h), ratios long/short, ratio taker (valeurs extrêmes).
 - **Séries 2023-2026**, avec les grandes phases du marché. Les niveaux changent d'une crypto à l'autre et dans le temps, d'où des z-scores glissants par crypto plutôt que des niveaux bruts.
-- **Corrélations entre variables** (heatmap) : les trois ratios long/short sont sans doute très corrélés, ce qui posera un problème de multicolinéarité dans le logit.
+- **Corrélations entre variables** (heatmap) : les trois ratios long/short sont sans doute très corrélés, ce qui poserait un problème de multicolinéarité dans une régression.
 - **Persistance** (autocorrélation) : le funding et l'open interest évoluent lentement, le ratio taker très vite.
 
 ### Étape 3 : la cible
 
-- **Fréquence des squeezes** : globale, par crypto, par année. Elle fixe la base naïve et justifie la PR-AUC (classes déséquilibrées, jamais d'accuracy).
+- **Fréquence des squeezes** : globale, par crypto, par année. Elle fixerait la base naïve d'un modèle de prévision (PR-AUC, classes déséquilibrées, jamais d'accuracy).
 - **Entonnoir C1 → C1+C2 → C1+C2+C3** : parmi les fortes hausses, part de celles où l'open interest baisse (rachat des shorts) plutôt que monte (nouveaux longs). Cela vérifie que la définition isole bien le mécanisme visé.
 - **Épisodes plutôt qu'heures** : avec la fenêtre de 24 h, un même squeeze marque jusqu'à 24 heures t de suite. On compte les épisodes distincts et leur durée.
 - **Simultanéité** : part des squeezes qui touchent plusieurs cryptos à la même heure (effet de marché, souvent emmené par BTC).
@@ -387,8 +381,8 @@ Les prix sont quasiment identiques : les deux sources sont bien alignées dans l
 - **Exemples** : un ou deux squeezes connus en graphique (prix, open interest, funding, ratio long/short sur ±3 jours). Candidat : SOL du 1er au 14 janvier 2023 (voir les [valeurs extrêmes Bybit](#panel-bybit-et-fusion-srcpanel_bybitpy)).
 
 **Fait** (section 3 de `rapport.ipynb`). Principaux constats, avec les valeurs de base :
-- **16 épisodes** (BTC 4, ETH 4, SOL 8), soit 0,13 à 0,31 % des heures : c'est la base naïve de la PR-AUC.
-- **13 épisodes sur 16 en 2023**, aucun en 2025 et un seul en 2026. Une période de test sur 2025-2026 ne contiendrait presque aucun squeeze : le découpage de validation devra en tenir compte.
+- **16 épisodes** (BTC 4, ETH 4, SOL 8), soit 0,13 à 0,31 % des heures : ce serait la base naïve d'un modèle de prévision.
+- **13 épisodes sur 16 en 2023**, aucun en 2025 et un seul en 2026. Les comparaisons dans le temps reposent donc sur peu d'épisodes récents.
 - **Entonnoir** : plus de la moitié des fortes hausses (C1) se font avec un open interest en hausse, donc de nouveaux longs. C2 ne garde que 6 à 13 % des heures C1. C3 n'enlève presque rien.
 - **Simultanéité** : 7 épisodes sur 16 tombent dans trois mouvements de marché (13-14 janvier 2023, mars 2023 après SVB, fin février 2024).
 - **Calendrier** : aucun effet visible de l'heure, et trop peu d'épisodes pour conclure sur le jour de la semaine. Retiré du rapport pour rester à 12 graphiques.
@@ -403,16 +397,16 @@ Sur les 10 cryptos, avec δ = 1,5 σ.
 - **Rendement à 24 h par décile** (quantiles 5 %, 50 % et 95 %). Selon H1, le rendement baisse quand les shorts sont nombreux. Les deux hypothèses ne s'excluent pas : H1 porte sur le centre de la distribution, H2 sur sa queue droite.
 - **Étude d'événement** : moyenne de chaque variable de t−72 h à t+24 h autour des squeezes, comparée aux hausses C1 sans baisse d'open interest et aux heures ordinaires.
 - **Croisement** : taux de squeeze selon le funding (négatif ou non) et l'open interest (en hausse ou non), en heatmap.
-- **Variables de prix seules** (rendement passé, volatilité, drawdown) : même exercice, plus leur corrélation avec le positionnement. Cela prépare la comparaison avec le modèle « prix seuls » et dit si les deux apportent la même information.
+- **Variables de prix seules** (rendement passé, volatilité, drawdown) : même exercice, plus leur corrélation avec le positionnement. Cela dit si le positionnement et le prix apportent la même information.
 
 **Fait** (section 4 de `rapport.ipynb`, variables dans `descriptif.variables_etape_4`). Principaux constats :
 - **86 épisodes, mais 34 événements de marché distincts** (épisodes de cryptos différentes dont les pics sont à moins de 24 h), dont 37 épisodes en 2025-2026 grâce aux nouvelles cryptos.
 - **Étude d'événement** : avant un squeeze, le prix baisse, l'open interest monte (+2,5 %), le funding est négatif et les gros traders se placent à la baisse, un à trois jours avant le pic ; puis l'open interest chute de 7 % pendant la hausse. Les fortes hausses sans rachat ont le profil inverse (open interest et funding en hausse).
 - **Déciles** : le ratio des gros traders en positions donne le gradient le plus net (28 % des épisodes dans son premier décile) et n'est presque pas corrélé au prix. Le funding négatif et l'open interest en hausse, réunis, multiplient le taux de squeeze par presque quatre.
-- **Le prix compte beaucoup** : 42 % des épisodes commencent après les pires rendements sur 7 jours. Le modèle « prix seuls » sera exigeant.
+- **Le prix compte beaucoup** : 42 % des épisodes commencent après les pires rendements sur 7 jours. Une partie du signal du positionnement est donc déjà dans le prix.
 - **Entonnoir avec la cible finale** : l'open interest monte pendant 74 % des fortes hausses des sept petites cryptos (57 % pour BTC, ETH et SOL). C3 n'écarte que 2 % des heures C1 + C2 des trois grosses, mais 49 % de celles des sept autres.
 - **H1 n'est pas soutenue** (rendement médian inchangé), **H2 l'est**. Le lien avec la volatilité est en partie mécanique (C1 exprimée en σ).
-- **Limite** : ces constats portent sur toute la période, 2025-2026 comprise, et ont servi à choisir δ = 1,5 σ et la variable clé. Ces deux choix seront vérifiés sur la seule période d'entraînement (voir les précautions).
+- **Limite** : ces constats portent sur toute la période 2023-2026 et ont servi à choisir δ = 1,5 σ et la variable clé. L'étape 5 vérifie qu'ils tiennent sur chaque sous-période.
 
 ### Étape 5 : hétérogénéité et robustesse
 
@@ -421,7 +415,7 @@ Sur les 10 cryptos, avec δ = 1,5 σ.
 - **δ = 1,2 σ** : les constats de l'étape 4 tiennent-ils avec une cible moins stricte, qui compte plus d'épisodes en 2025-2026 ?
 
 **Fait** (section 5 de `rapport.ipynb`). Les trois signaux de H2 de l'étape 4 : gros traders placés à la baisse (ratio en positions, déciles 1-2), funding négatif, forte hausse de l'open interest sur 24 h (déciles 9-10). Le contrôle δ = 1,2 σ est à la fin de l'étape 4.
-- **Par crypto et dans le temps** (`effet_des_signaux`) : le funding négatif (taux de squeeze × 1,8 à 2,7) et la hausse de l'open interest (× 1,6 à 3,7) marchent pour les grosses et les petites cryptos, en 2023-2024 comme en 2025-2026. Le ratio des gros traders est le plus fort (× 5,3 à 6,7) mais **s'inverse en 2025-2026 en niveau brut** (× 0,3) : son niveau a monté et les seuils de 2023-2026 ne sont presque plus atteints. Avec des déciles recalculés dans chaque période (`effet_selon_deciles`), il tient (× 4,4 puis × 3,0). Les variables du modèle doivent donc être des z-scores glissants. Les trois signaux marchent déjà sur 2023-2024 seule.
+- **Par crypto et dans le temps** (`effet_des_signaux`) : le funding négatif (taux de squeeze × 1,8 à 2,7) et la hausse de l'open interest (× 1,6 à 3,7) marchent pour les grosses et les petites cryptos, en 2023-2024 comme en 2025-2026. Le ratio des gros traders est le plus fort (× 5,3 à 6,7) mais **s'inverse en 2025-2026 en niveau brut** (× 0,3) : son niveau a monté et les seuils de 2023-2026 ne sont presque plus atteints. Avec des déciles recalculés dans chaque période (`effet_selon_deciles`), il tient (× 4,4 puis × 3,0). Il faut donc le mesurer en relatif (z-scores glissants). Les trois signaux marchent sur 2023-2024 seule comme sur 2025-2026 seule.
 - **Fear & Greed** (`squeezes_par_classe_fng`) : 65 % des épisodes commencent en phase de peur, qui ne couvre que 36 % des heures. Mais l'indice suit surtout le funding (corrélation 0,50) et le prix.
 - **Binance contre Bybit** (`cible_bybit`, C1 + C2 seulement) : autant d'épisodes sur les deux plateformes, 6 sur 10 se retrouvent sur l'autre, et l'étude d'événement donne des profils presque superposés : le mécanisme n'est pas propre à Binance.
 
@@ -441,7 +435,7 @@ Le rapport se limite à 12 graphiques, chacun commenté ; le reste est présent�
 
 - **Période** : tout calculer sur `panel.loc[START:]`, sans la chauffe.
 - **Tests statistiques** : les fenêtres de 24 h se chevauchent, donc la cible est très autocorrélée. Un t-test ou un χ² naïf surestime la significativité. On s'en tient aux graphiques et aux intervalles, ou on raisonne en épisodes.
-- **Pas de regard sur la période de test** : si l'analyse sert à choisir des seuils ou des variables, elle se fait seulement sur la période d'entraînement. Les étapes 3 et 4 ont été faites sur toute la période : une fois le découpage fixé, il faudra vérifier sur la seule période d'entraînement que δ = 1,5 σ reste un bon choix et que le ratio des gros traders en positions reste le signal le plus net (par exemple en refaisant `part_episodes_par_decile` sur `panel.loc[:fin_entrainement]`).
+- **Choix faits sur toute la période** : δ = 1,5 σ et la variable clé ont été choisis en regardant 2023-2026. Pour une analyse descriptive, ce n'est pas un problème, et l'étape 5 vérifie que les signaux tiennent sur chaque sous-période. Un modèle de prévision devrait en revanche refaire ces choix sur sa seule période d'entraînement (par exemple `part_episodes_par_decile` sur `panel.loc[:fin_entrainement]`).
 
 ### Priorités
 
@@ -458,7 +452,9 @@ Les cinq étapes sont faites. Si le temps manque, quatre graphiques relient le p
 | Début octobre | dépôt, collecte Binance | Bybit et Fear & Greed | revue de littérature |
 | Mi à fin octobre | panel horaire | cible | variables |
 | Début novembre | analyse descriptive (en commun) | | |
-| Mi-novembre | logit et base naïve | gradient boosting | stratégie et frais |
+| Mi-novembre | ~~logit et base naïve~~ | ~~gradient boosting~~ | ~~stratégie et frais~~ |
 | Fin novembre | robustesse | rédaction | reproductibilité |
+
+La modélisation prévue mi-novembre a été abandonnée : elle n'est pas demandée pour l'ENSAE, et le temps a été consacré à l'analyse descriptive (étapes 3 à 5) et à la réduction du rapport à 12 graphiques.
 
 Méthode de travail : une branche et une pull request par tâche.
