@@ -420,9 +420,14 @@ Sur les 10 cryptos, avec δ = 1,5 σ.
 - **Binance contre Bybit** sur les 10 cryptos : retrouve-t-on les mêmes faits ? C3 ne peut pas être refaite sur Bybit.
 - **δ = 1,2 σ** : les constats de l'étape 4 tiennent-ils avec une cible moins stricte, qui compte plus d'épisodes en 2025-2026 ?
 
+**Fait** (section 5 de `rapport.ipynb`). Les trois signaux de H2 de l'étape 4 : gros traders placés à la baisse (ratio en positions, déciles 1-2), funding négatif, forte hausse de l'open interest sur 24 h (déciles 9-10). Le contrôle δ = 1,2 σ est à la fin de l'étape 4.
+- **Par crypto et dans le temps** (`effet_des_signaux`) : le funding négatif (taux de squeeze × 1,8 à 2,7) et la hausse de l'open interest (× 1,6 à 3,7) marchent pour les grosses et les petites cryptos, en 2023-2024 comme en 2025-2026. Le ratio des gros traders est le plus fort (× 5,3 à 6,7) mais **s'inverse en 2025-2026 en niveau brut** (× 0,3) : son niveau a monté et les seuils de 2023-2026 ne sont presque plus atteints. Avec des déciles recalculés dans chaque période (`effet_selon_deciles`), il tient (× 4,4 puis × 3,0). Les variables du modèle doivent donc être des z-scores glissants. Les trois signaux marchent déjà sur 2023-2024 seule.
+- **Fear & Greed** (`squeezes_par_classe_fng`) : 65 % des épisodes commencent en phase de peur, qui ne couvre que 36 % des heures. Mais l'indice suit surtout le funding (corrélation 0,50) et le prix.
+- **Binance contre Bybit** (`cible_bybit`, C1 + C2 seulement) : autant d'épisodes sur les deux plateformes, 6 sur 10 se retrouvent sur l'autre, et l'étude d'événement donne des profils presque superposés : le mécanisme n'est pas propre à Binance.
+
 ### Graphiques du rapport : 12 au maximum
 
-Le rapport se limite à 12 graphiques, chacun commenté ; le reste est présenté en tableaux. Les étapes 1 à 4 en utilisent 9, il en reste **3 pour l'étape 5**.
+Le rapport se limite à 12 graphiques, chacun commenté ; le reste est présenté en tableaux. Les étapes 1 à 4 en utilisent 9, l'étape 5 en utilise 3.
 
 | Étape | Graphiques |
 |---|---|
@@ -430,6 +435,7 @@ Le rapport se limite à 12 graphiques, chacun commenté ; le reste est présent�
 | 2. Positionnement | séries 2023-2026 ; corrélations entre variables |
 | 3. La cible | QQ-plots des rendements et de l'open interest (seuils de C1 et C2 en σ) ; deux exemples de squeeze, BTC et SOL |
 | 4. Positionnement et squeezes | épisodes par année ; entonnoir (BTC, ETH, SOL contre les 7 autres) ; étude d'événement ; part des épisodes par décile (positionnement et prix) ; rendement à 24 h par décile (H1). Le taux de squeeze par décile, en heures, est en tableau |
+| 5. Hétérogénéité et robustesse | effet des signaux par groupe (cryptos, périodes) ; squeezes par classe de Fear & Greed ; étude d'événement Binance contre Bybit |
 
 ### Précautions
 
@@ -439,7 +445,7 @@ Le rapport se limite à 12 graphiques, chacun commenté ; le reste est présent�
 
 ### Priorités
 
-Les étapes 1 à 3 sont faites ; les étapes 4 et 5 peuvent commencer, car `cible.py` est disponible. Si le temps manque, quatre graphiques relient le plus directement les données à la question :
+Les cinq étapes sont faites. Si le temps manque, quatre graphiques relient le plus directement les données à la question :
 1. la fréquence de la cible, comptée en épisodes ;
 2. l'entonnoir C1 → C3 ;
 3. le taux de squeeze par décile des variables de positionnement ;
