@@ -24,7 +24,9 @@ Projet de Data Science, ENSAE 2A.
 - **C2, rachat des shorts** : l'open interest au pic est inférieur d'au moins 10 % à `OI_{t−1}` ;
 - **C3, achats agressifs** : le ratio taker moyen entre t et le pic est supérieur à 1.
 
-Variantes testées : k = 2,5 ou 4 ; plancher de 3 ou 8 % ; δ = 5 ou 15 % ; horizon de 12 ou 48 h (le seuil devient alors `k·σ_30j·√horizon`). Le calcul est détaillé dans [Cible](#cible-srcciblepy).
+Variantes testées : k = 2,5 ou 4 ; plancher de 3 ou 8 % ; δ = 5 ou 15 %, ou 1,2 ou 1,5 écart-type des variations d'open interest sur 24 h des 30 derniers jours ; horizon de 12 ou 48 h (le seuil devient alors `k·σ_30j·√horizon`). Le calcul est détaillé dans [Cible](#cible-srcciblepy).
+
+**Cible retenue à partir de l'étape 4** : δ = 1,5 σ, avec δ = 1,2 σ en contrôle. Exprimer C2 en écarts-types, comme C1, lui donne la même sévérité pour chaque crypto, ce que ne fait pas un seuil fixe (voir la section 3 du rapport).
 
 **La réponse comporte deux volets :**
 - **statistique** : le positionnement bat-il une base naïve, et un modèle qui n'utilise que les prix (PR-AUC) ?
@@ -36,6 +38,7 @@ On utilise [uv](https://docs.astral.sh/uv/) avec Python 3.12.
 
 ```bash
 uv sync                                        # crée .venv avec les versions de uv.lock
+uv run python -m scripts.choisir_cryptos       # facultatif : retrouve la liste SYMBOLS de config.py (20 min)
 uv run python -m scripts.telecharger_binance   # collecte Binance (relançable)
 uv run python -m scripts.telecharger_bybit     # collecte Bybit (moins de 5 min)
 uv run python -m scripts.telecharger_fng       # indice Fear & Greed (une requête)
@@ -50,7 +53,7 @@ Sans uv : `pip install -r requirements.txt`, généré par `uv export --no-hashe
 
 **Données en ligne.** Les données brutes et les panels sont déposés sur le stockage S3 du SSPCloud, dans un dossier public en lecture seule, avec la même arborescence que `data/` : `https://minio.lab.sspcloud.fr/ethany1/diffusion/ensae-squeeze/`.
 - Le notebook les lit sans identifiants (`src.stockage.lire_public`).
-- Pour en déposer de nouvelles (`src.stockage.envoyer`), il faut des identifiants SSPCloud dans un fichier `.env`, jamais commité, et lancer Python avec `uv run --env-file .env python ...`.
+- Pour en déposer de nouvelles, il faut des identifiants SSPCloud dans un fichier `.env`, jamais commité : `uv run --env-file .env python -m scripts.envoyer_s3`. Le script n'envoie que les fichiers bruts absents du S3, et renvoie toujours les panels de `data/interim/`. Les identifiants SSPCloud sont temporaires : les régénérer depuis son compte s'ils sont refusés.
 
 ## Organisation du dépôt
 
@@ -71,10 +74,12 @@ src/
   modeles.py           base naïve, logit, LightGBM, validation temporelle
   strategie.py         backtest avec frais et funding
 scripts/
+  choisir_cryptos.py       applique la règle de choix des cryptos (open interest de décembre 2022)
   telecharger_binance.py   télécharge toutes les archives Binance (SYMBOLS × types)
   telecharger_bybit.py     télécharge toutes les séries Bybit
   telecharger_fng.py       télécharge l'indice Fear & Greed
   construire_panel.py      construit les panels Binance, Bybit et leur fusion, et affiche manquants et contrôles
+  envoyer_s3.py            dépose les données brutes manquantes et les panels sur le S3 du SSPCloud
   indicateur_shortsqueeze.py  calcule la cible et enregistre data/processed/panel_cible.parquet
   descriptif.ipynb         exploration des premiers squeezes (brouillon de l'étape 3)
 data/
@@ -108,6 +113,20 @@ df = load_binance("BTCUSDT", "metrics")
 | Binance spot `klines` 1h | OHLCV spot | 1 h | idem |
 | Bybit API v5 | funding, open interest, bougies OHLCV | par paiement ; 1 h | REST paginé, sans clé |
 | alternative.me | Fear & Greed | quotidien | REST |
+
+### Univers : 10 cryptos
+
+Règle (`scripts/choisir_cryptos.py`) : parmi les 154 perpétuels USDT cotés avant décembre 2022, on classe les contrats par open interest moyen en USDT de décembre 2022, juste avant la période d'étude, et on garde les 10 premiers qui existent encore sous le même nom en septembre 2026 avec une paire spot du même nom. Classer avant la période évite de choisir les cryptos qui ont monté ensuite (biais du survivant).
+
+| Rang | Contrat | Open interest déc. 2022 (M USDT) |
+|---|---|---|
+| 1-2 | BTCUSDT, ETHUSDT | 1 880, 1 470 |
+| 3-7 | BNBUSDT, DOGEUSDT, LTCUSDT, XRPUSDT, SOLUSDT | 190, 140, 124, 108, 86 |
+| 8-10 | DOTUSDT, LINKUSDT, ADAUSDT | 75, 65, 64 |
+
+- **MATICUSDT** (70 M USDT, entre DOT et LINK) est exclu : renommé POL en 2024, il n'a plus de données sous ce nom.
+- **L'open interest plutôt que le volume** : en décembre 2022, AXS et MASK avaient des volumes gonflés par des hausses spéculatives ponctuelles. L'open interest mesure les positions à levier ouvertes, au cœur de la question.
+- **Usage** : les étapes 1 à 3 du rapport décrivent en détail BTC, ETH et SOL (`SYMBOLS_DESCRIPTIF`) ; les étapes 4 et 5 utilisent les 10. Bybit est collecté pour les 10, comme contrôle de fiabilité.
 
 ### Période d'étude : 2023-01-01 au 2026-09-30
 
@@ -308,11 +327,12 @@ Les prix sont quasiment identiques : les deux sources sont bien alignées dans l
 
 ## Cible (`src/cible.py`)
 
-`ajouter_cible(panel, k=3, plancher=0.05, delta=0.10, horizon=24)` ajoute la cible au panel, crypto par crypto. Chaque variante change un seul paramètre, par exemple `ajouter_cible(panel, delta=0.05)`.
+`ajouter_cible(panel, k=3, plancher=0.05, delta=0.10, horizon=24)` ajoute la cible au panel, crypto par crypto. Chaque variante change un seul paramètre, par exemple `ajouter_cible(panel, delta=0.05)`. Avec `delta_sigma=1.5`, C2 exige une baisse de 1,5 `sigma_oi_30j` au lieu de `delta`.
 
 | Colonne | Contenu |
 |---|---|
 | `sigma_30j` | écart-type des rendements horaires (en log) de t−30 jours (exclu) à t |
+| `sigma_oi_30j` | écart-type des variations relatives de l'open interest sur `horizon` heures, sur les 30 derniers jours |
 | `date_pic`, `delai_pic_h` | heure du plus haut des `horizon` heures suivantes, et son délai après t |
 | `hausse_pic` | (`high` au pic) / (`close` de la ligne t) − 1 |
 | `variation_oi` | (open interest au pic) / (open interest de la ligne t) − 1 |
@@ -342,7 +362,7 @@ Les prix sont quasiment identiques : les deux sources sont bien alignées dans l
 
 ### Étape 1 : données et univers
 
-- **Carte des valeurs manquantes** par crypto et par mois (`rapport_qualite` étendu aux 25 cryptos) : repérer les cryptos cotées après janvier 2023 et les trous de relevés.
+- **Carte des valeurs manquantes** par crypto et par mois (`rapport_qualite`, sur BTC, ETH et SOL ; les 10 cryptos sont contrôlées au début de l'étape 4) : repérer les cryptos cotées après janvier 2023 et les trous de relevés.
 - **Cohérence du ratio taker** : recalculer le ratio à 1 h depuis les bougies (`taker_buy_volume / (volume − taker_buy_volume)`) et le comparer à `taker_ratio`, issu des relevés à 5 min. Ce contrôle croise deux sources Binance et donne une seconde mesure possible pour C3.
 - **Tableau par crypto** : volume moyen en USDT, open interest moyen en USD, volatilité annualisée, rendement total, funding moyen annualisé, part des heures à funding négatif.
 - **Distribution des rendements horaires** (kurtosis, QQ-plot) : queues épaisses et volatilités très différentes d'une crypto à l'autre, d'où un seuil C1 exprimé en σ.
@@ -372,20 +392,31 @@ Les prix sont quasiment identiques : les deux sources sont bien alignées dans l
 - **Entonnoir** : plus de la moitié des fortes hausses (C1) se font avec un open interest en hausse, donc de nouveaux longs. C2 ne garde que 6 à 13 % des heures C1. C3 n'enlève presque rien.
 - **Simultanéité** : 7 épisodes sur 16 tombent dans trois mouvements de marché (13-14 janvier 2023, mars 2023 après SVB, fin février 2024).
 - **Calendrier** : aucun effet visible de l'heure, et trop peu d'épisodes pour conclure sur le jour de la semaine.
-- **Sensibilité** : δ est le seuil décisif (avec δ = 5 %, environ trois fois plus d'épisodes ; avec δ = 15 %, aucun pour BTC). Le plancher de 5 % ne joue presque jamais. Les étapes suivantes devront être vérifiées avec δ = 5 %.
+- **Sensibilité** : δ est le seuil décisif (avec δ = 5 %, environ trois fois plus d'épisodes ; avec δ = 15 %, aucun pour BTC). Le plancher de 5 % ne joue presque jamais. L'étape 4 utilise δ = 1,5 écart-type des variations d'open interest, de même sévérité pour chaque crypto, avec δ = 1,2 σ en contrôle.
 
 ### Étape 4 : positionnement et squeezes, première réponse à H1/H2
 
+Sur les 10 cryptos, avec δ = 1,5 σ.
+
+- **Contrôle des données avec Bybit** : accord des prix, de l'open interest et du funding entre les deux plateformes, et, pour chaque épisode, baisse de l'open interest Bybit entre t et le pic. Une baisse vue sur les deux plateformes est un vrai rachat de positions, pas une erreur de relevé.
 - **Taux de squeeze par décile** de chaque variable (funding, variation d'open interest sur 24 h et 7 jours, ratios long/short, basis, volume perpétuel/spot). Selon H2, le taux monte quand les shorts sont nombreux : funding négatif, ratio bas, open interest en hausse.
 - **Rendement à 24 h par décile** (quantiles 5 %, 50 % et 95 %). Selon H1, le rendement baisse quand les shorts sont nombreux. Les deux hypothèses ne s'excluent pas : H1 porte sur le centre de la distribution, H2 sur sa queue droite.
 - **Étude d'événement** : moyenne de chaque variable de t−72 h à t+24 h autour des squeezes, comparée aux hausses C1 sans baisse d'open interest et aux heures ordinaires.
 - **Croisement** : taux de squeeze selon le funding (négatif ou non) et l'open interest (en hausse ou non), en heatmap.
 - **Variables de prix seules** (rendement passé, volatilité, drawdown) : même exercice, plus leur corrélation avec le positionnement. Cela prépare la comparaison avec le modèle « prix seuls » et dit si les deux apportent la même information.
 
+**Fait** (section 4 de `rapport.ipynb`, variables dans `descriptif.variables_etape_4`). Principaux constats :
+- **86 épisodes, mais 34 événements de marché distincts** (épisodes de cryptos différentes dont les pics sont à moins de 24 h), dont 37 épisodes en 2025-2026 grâce aux nouvelles cryptos.
+- **Étude d'événement** : avant un squeeze, le prix baisse, l'open interest monte (+2,5 %), le funding est négatif et les gros traders se placent à la baisse, un à trois jours avant le pic ; puis l'open interest chute de 7 % pendant la hausse. Les fortes hausses sans rachat ont le profil inverse (open interest et funding en hausse).
+- **Déciles** : le ratio des gros traders en positions donne le gradient le plus net (28 % des épisodes dans son premier décile) et n'est presque pas corrélé au prix. Le funding négatif et l'open interest en hausse, réunis, multiplient le taux de squeeze par presque quatre.
+- **Le prix compte beaucoup** : 42 % des épisodes commencent après les pires rendements sur 7 jours. Le modèle « prix seuls » sera exigeant.
+- **H1 n'est pas soutenue** (rendement médian inchangé), **H2 l'est**. Le lien avec la volatilité est en partie mécanique (C1 exprimée en σ).
+
 ### Étape 5 : hétérogénéité et robustesse
 
 - **Par crypto** (BTC et ETH contre petites cryptos), **par année** et **par niveau de Fear & Greed**.
-- **Binance contre Bybit** sur BTC, ETH et SOL : retrouve-t-on les mêmes faits ? C3 ne peut pas être refaite sur Bybit.
+- **Binance contre Bybit** sur les 10 cryptos : retrouve-t-on les mêmes faits ? C3 ne peut pas être refaite sur Bybit.
+- **δ = 1,2 σ** : les constats de l'étape 4 tiennent-ils avec une cible moins stricte, qui compte plus d'épisodes en 2025-2026 ?
 
 ### Précautions
 

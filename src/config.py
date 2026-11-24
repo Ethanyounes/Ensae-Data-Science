@@ -20,8 +20,11 @@ END = "2026-09-30"
 CHAUFFE_JOURS = 30
 DEBUT_DONNEES = str(date.fromisoformat(START) - timedelta(days=CHAUFFE_JOURS))
 
-# À compléter jusqu'à 25 cryptos
-SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+# Les 10 perpétuels USDT au plus gros open interest en décembre 2022 (règle : scripts/choisir_cryptos.py)
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "DOGEUSDT", "LTCUSDT",
+           "XRPUSDT", "SOLUSDT", "DOTUSDT", "LINKUSDT", "ADAUSDT"]
+# Les étapes 1 à 3 du rapport décrivent en détail les 3 plus grosses ; les étapes 4 et 5 utilisent les 10
+SYMBOLS_DESCRIPTIF = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 
 
 def raw_path(source: str, kind: str, symbol: str) -> Path:
