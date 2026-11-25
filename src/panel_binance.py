@@ -107,3 +107,18 @@ def rapport_qualite(panel: pd.DataFrame) -> pd.DataFrame:
     """Part de valeurs manquantes (en %) par crypto et par colonne."""
     manquants = panel.drop(columns="symbol").isna().groupby(panel["symbol"]).mean()
     return (manquants * 100).round(2)
+
+
+def controles_panel(panel: pd.DataFrame) -> pd.DataFrame:
+    """Structure du panel, par crypto : heures présentes et attendues, doublons, heures sans bougie ou sans relevé."""
+    resultats = {}
+    for symbol, crypto in panel.groupby("symbol"):
+        resultats[symbol] = {
+            "Heures": len(crypto),
+            "Heures attendues": len(grille_horaire()),
+            "Heures en double": crypto.index.duplicated().sum(),
+            "Heures sans bougie": crypto["close"].isna().sum(),
+            "Heures sans relevé": (crypto["n_releves"] == 0).sum(),
+            "Heures avec 1 à 11 relevés": crypto["n_releves"].between(1, 11).sum(),
+        }
+    return pd.DataFrame(resultats).T

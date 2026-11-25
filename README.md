@@ -1,6 +1,6 @@
-# Prédire les short squeezes sur les perpétuels crypto
+# Le positionnement des traders annonce-t-il les short squeezes ?
 
-Projet de Data Science, ENSAE 2A.
+Projet de Python pour la data science, ENSAE 2A, 2026 : Emmanuelle Chocron, Maxime Duvivier, Ethan Younes.
 
 1. [Question et hypothèses](#question-et-hypothèses)
 2. [Installation et reproduction](#installation-et-reproduction)
@@ -14,9 +14,9 @@ Projet de Data Science, ENSAE 2A.
 
 ## Question et hypothèses
 
-**Question** : peut-on prédire un short squeeze 24 heures à l'avance à partir du positionnement des traders sur les perpétuels crypto (Binance USD-M) ?
+**Question** : le positionnement des traders sur les perpétuels crypto (Binance USD-M) annonce-t-il les short squeezes, 24 heures à l'avance ?
 
-- **H1, shorts informés** : une accumulation de shorts annonce une baisse, et le positionnement ne prédit pas de squeeze.
+- **H1, shorts informés** : une accumulation de shorts annonce une baisse, et le positionnement n'annonce pas de squeeze.
 - **H2, shorts fragiles** : des shorts accumulés avec du levier rendent le marché vulnérable à un rachat forcé.
 
 **Cible.** Il y a un short squeeze à l'heure t si les trois conditions suivantes sont réunies dans les 24 h qui suivent (valeurs de base) :
@@ -50,7 +50,7 @@ Sans uv : `pip install -r requirements.txt`, généré par `uv export --no-hashe
 **Données locales.** Les données ne sont pas versionnées (`data/` est dans `.gitignore`). Le dossier local se change avec la variable d'environnement `DATA_DIR`.
 
 **Données en ligne.** Les données brutes et les panels sont déposés sur le stockage S3 du SSPCloud, dans un dossier public en lecture seule, avec la même arborescence que `data/` : `https://minio.lab.sspcloud.fr/ethany1/diffusion/ensae-squeeze/`.
-- Le notebook les lit sans identifiants (`src.stockage.lire_public`).
+- Le notebook les lit sans identifiants : `src.stockage.lire_donnees` lit chaque fichier en local s'il existe, sinon au même chemin sur le S3.
 - Pour en déposer de nouvelles, il faut des identifiants SSPCloud dans un fichier `.env`, jamais commité : `uv run --env-file .env python -m scripts.envoyer_s3`. Le script n'envoie que les fichiers bruts absents du S3, et renvoie toujours les panels de `data/interim/`. Les identifiants SSPCloud sont temporaires : les régénérer depuis son compte s'ils sont refusés.
 
 ## Organisation du dépôt
@@ -401,8 +401,8 @@ Sur les 10 cryptos, avec δ = 1,5 σ.
 
 **Fait** (section 4 de `rapport.ipynb`, variables dans `descriptif.variables_etape_4`). Principaux constats :
 - **86 épisodes, mais 34 événements de marché distincts** (épisodes de cryptos différentes dont les pics sont à moins de 24 h), dont 37 épisodes en 2025-2026 grâce aux nouvelles cryptos.
-- **Étude d'événement** : avant un squeeze, le prix baisse, l'open interest monte (+2,5 %), le funding est négatif et les gros traders se placent à la baisse, un à trois jours avant le pic ; puis l'open interest chute de 7 % pendant la hausse. Les fortes hausses sans rachat ont le profil inverse (open interest et funding en hausse).
-- **Déciles** : le ratio des gros traders en positions donne le gradient le plus net (28 % des épisodes dans son premier décile) et n'est presque pas corrélé au prix. Le funding négatif et l'open interest en hausse, réunis, multiplient le taux de squeeze par presque quatre.
+- **Étude d'événement** : avant un squeeze, le prix baisse, l'open interest monte (+2,5 %), le funding est négatif et les gros traders se placent à la baisse, un à trois jours avant le pic ; puis l'open interest chute de 7 % pendant la hausse. Les fortes hausses sans rachat ont le profil inverse (open interest et funding en hausse). Avec les bandes de confiance à 95 % (`bande_etude_evenement`, bootstrap par semaines du pic), seul le funding se sépare nettement des heures ordinaires avant le pic (de 72 h à 8 h avant) ; la baisse de l'open interest n'est nette que dans les 9 à 12 dernières heures.
+- **Déciles** : le ratio des gros traders en positions donne le gradient le plus net (28 % des épisodes dans son premier décile) et n'est presque pas corrélé au prix. Le funding négatif et l'open interest en hausse, réunis, multiplient le taux de squeeze par presque quatre (`rapports_croisement` : 3,9, intervalle [1,6 ; 8,7]).
 - **Le prix compte beaucoup** : 42 % des épisodes commencent après les pires rendements sur 7 jours. Une partie du signal du positionnement est donc déjà dans le prix.
 - **Entonnoir avec la cible finale** : l'open interest monte pendant 74 % des fortes hausses des sept petites cryptos (57 % pour BTC, ETH et SOL). C3 n'écarte que 2 % des heures C1 + C2 des trois grosses, mais 49 % de celles des sept autres.
 - **H1 n'est pas soutenue** (rendement médian inchangé), **H2 l'est**. Le lien avec la volatilité est en partie mécanique (C1 exprimée en σ).
@@ -415,7 +415,8 @@ Sur les 10 cryptos, avec δ = 1,5 σ.
 - **δ = 1,2 σ** : les constats de l'étape 4 tiennent-ils avec une cible moins stricte, qui compte plus d'épisodes en 2025-2026 ?
 
 **Fait** (section 5 de `rapport.ipynb`). Les trois signaux de H2 de l'étape 4 : gros traders placés à la baisse (ratio en positions, déciles 1-2), funding négatif, forte hausse de l'open interest sur 24 h (déciles 9-10). Le contrôle δ = 1,2 σ est à la fin de l'étape 4.
-- **Par crypto et dans le temps** (`effet_des_signaux`) : le funding négatif (taux de squeeze × 1,8 à 2,7) et la hausse de l'open interest (× 1,6 à 3,7) marchent pour les grosses et les petites cryptos, en 2023-2024 comme en 2025-2026. Le ratio des gros traders est le plus fort (× 5,3 à 6,7) mais **s'inverse en 2025-2026 en niveau brut** (× 0,3) : son niveau a monté et les seuils de 2023-2026 ne sont presque plus atteints. Avec des déciles recalculés dans chaque période (`effet_selon_deciles`), il tient (× 4,4 puis × 3,0). Il faut donc le mesurer en relatif (z-scores glissants). Les trois signaux marchent sur 2023-2024 seule comme sur 2025-2026 seule.
+- **Par crypto et dans le temps** (`effet_des_signaux`) : le funding négatif (taux de squeeze × 1,8 à 2,7) et la hausse de l'open interest (× 1,6 à 3,7) vont dans le même sens pour les grosses et les petites cryptos, en 2023-2024 comme en 2025-2026. Le ratio des gros traders est le plus fort (× 5,3 à 6,7) mais **s'inverse en 2025-2026 en niveau brut** (× 0,3) : son niveau a monté et les seuils de 2023-2026 ne sont presque plus atteints. Avec des déciles recalculés dans chaque période (`effet_selon_deciles`), il tient (× 4,4 puis × 3,0). Il faut donc le mesurer en relatif (z-scores glissants).
+- **Intervalles de confiance à 95 %** (`intervalle_bootstrap`) : bootstrap par blocs d'une semaine, toutes cryptos ensemble (2 000 tirages), car les heures d'un même squeeze et les squeezes simultanés ne sont pas indépendants. L'intervalle du ratio des gros traders reste au-dessus de 1 dans tous les groupes (en relatif) ; ceux du funding et de l'open interest ne le sont que dans deux groupes sur quatre chacun.
 - **Fear & Greed** (`squeezes_par_classe_fng`) : 65 % des épisodes commencent en phase de peur, qui ne couvre que 36 % des heures. Mais l'indice suit surtout le funding (corrélation 0,50) et le prix.
 - **Binance contre Bybit** (`cible_bybit`, C1 + C2 seulement) : autant d'épisodes sur les deux plateformes, 6 sur 10 se retrouvent sur l'autre, et l'étude d'événement donne des profils presque superposés : le mécanisme n'est pas propre à Binance.
 
@@ -434,7 +435,7 @@ Le rapport se limite à 12 graphiques, chacun commenté ; le reste est présent�
 ### Précautions
 
 - **Période** : tout calculer sur `panel.loc[START:]`, sans la chauffe.
-- **Tests statistiques** : les fenêtres de 24 h se chevauchent, donc la cible est très autocorrélée. Un t-test ou un χ² naïf surestime la significativité. On s'en tient aux graphiques et aux intervalles, ou on raisonne en épisodes.
+- **Tests statistiques** : les fenêtres de 24 h se chevauchent, donc la cible est très autocorrélée. Un t-test ou un χ² naïf surestime la significativité. On s'en tient aux graphiques et aux intervalles (bootstrap par semaines, étape 5), ou on raisonne en épisodes.
 - **Choix faits sur toute la période** : δ = 1,5 σ et la variable clé ont été choisis en regardant 2023-2026. Pour une analyse descriptive, ce n'est pas un problème, et l'étape 5 vérifie que les signaux tiennent sur chaque sous-période. Un modèle de prévision devrait en revanche refaire ces choix sur sa seule période d'entraînement (par exemple `part_episodes_par_decile` sur `panel.loc[:fin_entrainement]`).
 
 ### Priorités
