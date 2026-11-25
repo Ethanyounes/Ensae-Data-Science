@@ -1,7 +1,6 @@
 """Statistiques et graphiques descriptifs appelés par rapport.ipynb."""
 
 import textwrap
-from pathlib import Path
 from statistics import NormalDist
 
 import matplotlib.pyplot as plt
@@ -12,7 +11,7 @@ from src.cible import HORIZON, ajouter_cible
 from src.config import START, SYMBOLS, SYMBOLS_DESCRIPTIF
 from src.panel_binance import PANEL_FILE
 from src.panel_bybit import PANEL_FUSION_FILE
-from src.stockage import lire_public
+from src.stockage import lire_donnees
 
 COULEURS = {"BTCUSDT": "#2a78d6", "ETHUSDT": "#eb6834", "SOLUSDT": "#1baf7a", "BNBUSDT": "#e0b400",
             "DOGEUSDT": "#a0522d", "LTCUSDT": "#7f7f7f", "XRPUSDT": "#17becf", "DOTUSDT": "#d6338a",
@@ -32,16 +31,9 @@ EVENEMENTS = {"2024-01-10": "ETF bitcoin au comptant", "2024-11-05": "Élection 
               "2025-10-10": "Krach du 10 octobre"}
 
 
-def lire_interim(fichier: Path) -> pd.DataFrame:
-    """Parquet de data/interim/, lu en local s'il existe, sinon sur le S3."""
-    if fichier.exists():
-        return pd.read_parquet(fichier)
-    return lire_public(f"interim/{fichier.name}")
-
-
 def charger_panel(avec_chauffe: bool = False, symboles: list[str] = SYMBOLS) -> pd.DataFrame:
     """Panel horaire des cryptos demandées. Sans la chauffe par défaut."""
-    panel = lire_interim(PANEL_FILE)
+    panel = lire_donnees(PANEL_FILE)
     panel = panel[panel["symbol"].isin(symboles)]
     # La cible a besoin de la chauffe : σ est calculé sur les 30 jours qui précèdent t
     if avec_chauffe:
@@ -89,7 +81,7 @@ def comparer_taker(panel: pd.DataFrame) -> pd.DataFrame:
 
 
 def tableau_cryptos(panel: pd.DataFrame) -> pd.DataFrame:
-    """Taille, volatilité, rendement et funding de chaque crypto sur la période d'étude."""
+    """Taille, volatilité, rendement et funding de chaque crypto sur la période d'étude, de la plus grosse à la plus petite."""
     lignes = {}
     for symbole, crypto in panel.groupby("symbol"):
         rendements = rendements_horaires(crypto)
@@ -102,7 +94,7 @@ def tableau_cryptos(panel: pd.DataFrame) -> pd.DataFrame:
             "Heures à funding négatif (%)": (crypto["funding_horaire"] < 0).mean() * 100,
             "Volume perpétuel / volume spot": crypto["quote_volume"].sum() / crypto["spot_quote_volume"].sum(),
         }
-    return pd.DataFrame(lignes).T
+    return pd.DataFrame(lignes).T.sort_values("Volume quotidien moyen (Md USDT)", ascending=False)
 
 
 def queues_rendements(panel: pd.DataFrame) -> pd.DataFrame:
@@ -612,7 +604,7 @@ def graphique_rendement_par_decile(rendements: pd.DataFrame, nom_variable: str) 
 
 def charger_fusion(avec_chauffe: bool = False) -> pd.DataFrame:
     """Panel Binance complété des colonnes Bybit (suffixe _bybit). Sans la chauffe par défaut."""
-    fusion = lire_interim(PANEL_FUSION_FILE)
+    fusion = lire_donnees(PANEL_FUSION_FILE)
     if avec_chauffe:
         return fusion
     return periode_etude(fusion)

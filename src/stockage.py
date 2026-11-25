@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import s3fs
 
-from src.config import S3_BUCKET, S3_ENDPOINT, S3_PREFIX, S3_PUBLIC_URL
+from src.config import DATA_DIR, S3_BUCKET, S3_ENDPOINT, S3_PREFIX, S3_PUBLIC_URL
 
 
 def connexion_s3() -> s3fs.S3FileSystem:
@@ -29,3 +29,10 @@ def envoyer(chemin_local: Path, chemin_relatif: str) -> None:
 def lire_public(chemin_relatif: str) -> pd.DataFrame:
     """Lit un parquet du S3 sans identifiants, par exemple lire_public("interim/panel.parquet")."""
     return pd.read_parquet(f"{S3_PUBLIC_URL}/{chemin_relatif}")
+
+
+def lire_donnees(fichier: Path) -> pd.DataFrame:
+    """Parquet de data/, lu en local s'il existe, sinon au même chemin sur le S3."""
+    if fichier.exists():
+        return pd.read_parquet(fichier)
+    return lire_public(fichier.relative_to(DATA_DIR).as_posix())

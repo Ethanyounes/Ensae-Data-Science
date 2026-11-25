@@ -1,6 +1,6 @@
-# Prédire les short squeezes sur les perpétuels crypto
+# Le positionnement des traders annonce-t-il les short squeezes ?
 
-Projet de Data Science, ENSAE 2A.
+Projet de Python pour la data science, ENSAE 2A, 2026 : Emmanuelle Chocron, Maxime Duvivier, Ethan Younes.
 
 1. [Question et hypothèses](#question-et-hypothèses)
 2. [Installation et reproduction](#installation-et-reproduction)
@@ -14,9 +14,9 @@ Projet de Data Science, ENSAE 2A.
 
 ## Question et hypothèses
 
-**Question** : peut-on prédire un short squeeze 24 heures à l'avance à partir du positionnement des traders sur les perpétuels crypto (Binance USD-M) ?
+**Question** : le positionnement des traders sur les perpétuels crypto (Binance USD-M) annonce-t-il les short squeezes, 24 heures à l'avance ?
 
-- **H1, shorts informés** : une accumulation de shorts annonce une baisse, et le positionnement ne prédit pas de squeeze.
+- **H1, shorts informés** : une accumulation de shorts annonce une baisse, et le positionnement n'annonce pas de squeeze.
 - **H2, shorts fragiles** : des shorts accumulés avec du levier rendent le marché vulnérable à un rachat forcé.
 
 **Cible.** Il y a un short squeeze à l'heure t si les trois conditions suivantes sont réunies dans les 24 h qui suivent (valeurs de base) :
@@ -50,7 +50,7 @@ Sans uv : `pip install -r requirements.txt`, généré par `uv export --no-hashe
 **Données locales.** Les données ne sont pas versionnées (`data/` est dans `.gitignore`). Le dossier local se change avec la variable d'environnement `DATA_DIR`.
 
 **Données en ligne.** Les données brutes et les panels sont déposés sur le stockage S3 du SSPCloud, dans un dossier public en lecture seule, avec la même arborescence que `data/` : `https://minio.lab.sspcloud.fr/ethany1/diffusion/ensae-squeeze/`.
-- Le notebook les lit sans identifiants (`src.stockage.lire_public`).
+- Le notebook les lit sans identifiants : `src.stockage.lire_donnees` lit chaque fichier en local s'il existe, sinon au même chemin sur le S3.
 - Pour en déposer de nouvelles, il faut des identifiants SSPCloud dans un fichier `.env`, jamais commité : `uv run --env-file .env python -m scripts.envoyer_s3`. Le script n'envoie que les fichiers bruts absents du S3, et renvoie toujours les panels de `data/interim/`. Les identifiants SSPCloud sont temporaires : les régénérer depuis son compte s'ils sont refusés.
 
 ## Organisation du dépôt
