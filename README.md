@@ -75,7 +75,6 @@ scripts/
   construire_panel.py      construit les panels Binance, Bybit et leur fusion, et affiche manquants et contrôles
   envoyer_s3.py            dépose les données brutes manquantes et les panels sur le S3 du SSPCloud
   indicateur_shortsqueeze.py  calcule la cible et enregistre data/processed/panel_cible.parquet
-  descriptif.ipynb         exploration des premiers squeezes (brouillon de l'étape 3)
 data/
   raw/binance/{metrics,fundingRate,klines,premiumIndexKlines,spot_klines}/<SYMBOLE>/*.parquet
   raw/bybit/{funding,open_interest,klines}/<SYMBOLE>/<SYMBOLE>-<série>.parquet
