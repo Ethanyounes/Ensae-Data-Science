@@ -1,4 +1,4 @@
-"""Télécharge les archives Binance de toutes les cryptos (relançable sans risque).
+"""Télécharge les archives Binance de toutes les cryptos.
 
 uv run python -m scripts.telecharger_binance
 """

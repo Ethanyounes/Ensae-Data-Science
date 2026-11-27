@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from src.config import BINANCE_BASE_URL, raw_path
 
-# Types d'archives téléchargés, avec leur colonne de temps
+
 BINANCE_KINDS = {
     "metrics": "create_time",
     "fundingRate": "calc_time",
@@ -21,13 +21,13 @@ BINANCE_KINDS = {
 }
 KLINE_KINDS = ["klines", "premiumIndexKlines", "spot_klines"]
 
-# Les vieux fichiers de klines n'ont pas de ligne d'en-tête
+
 BINANCE_KLINE_COLS = [
     "open_time", "open", "high", "low", "close", "volume", "close_time",
     "quote_volume", "count", "taker_buy_volume", "taker_buy_quote_volume", "ignore",
 ]
 
-session = requests.Session()  # une seule connexion pour des milliers de fichiers
+session = requests.Session()  # pour avoir une seule connexion pour tous les fichiers
 
 
 def binance_url(symbol: str, kind: str, period: str, interval: str = "1h") -> str:

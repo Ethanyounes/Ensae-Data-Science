@@ -18,7 +18,6 @@ def download_fear_greed() -> pd.DataFrame:
     response = requests.get(FNG_URL, params={"limit": 0, "format": "json"}, timeout=30)
     response.raise_for_status()
     data = response.json()
-    # Comme chez Bybit, les erreurs sont signalées dans le contenu de la réponse
     if data["metadata"]["error"]:
         raise RuntimeError(f"Fear & Greed : {data['metadata']['error']}")
     return clean_fear_greed(data["data"])
@@ -26,11 +25,9 @@ def download_fear_greed() -> pd.DataFrame:
 
 def clean_fear_greed(lignes: list) -> pd.DataFrame:
     """Met les données au format du projet.
-
-    Chaque ligne arrive sous la forme
+    Chaque ligne arrive sous la forme :
     {"value": "57", "value_classification": "Greed", "timestamp": "1791849600"}, tout en texte.
     """
-    # La ligne du jour contient en plus "time_until_update", inutile
     df = pd.DataFrame(lignes, columns=["timestamp", "value", "value_classification"])
     df = df.rename(columns={"timestamp": "date", "value": "fng",
                             "value_classification": "fng_classe"})

@@ -1,4 +1,4 @@
-"""Collecte Bybit (API publique v5) : funding, open interest et bougies 1 h.
+"""Collecte Bybit : funding, open interest et bougies 1 h.
 
 Bybit sert de source de robustesse : vérifier que les résultats ne sont pas
 propres aux clients de Binance. Pas de clé d'API nécessaire.
@@ -14,8 +14,6 @@ import requests
 
 from src.config import BYBIT_BASE_URL, DEBUT_DONNEES, END, raw_path
 
-# limite : nombre maximal de points par requête, fixé par Bybit ;
-# debut et fin : noms des paramètres de dates, qui diffèrent d'un point d'accès à l'autre
 BYBIT_KINDS = {
     "funding": {"chemin": "/v5/market/funding/history", "limite": 200,
                 "debut": "startTime", "fin": "endTime", "extra": {}},
@@ -26,7 +24,6 @@ BYBIT_KINDS = {
                "debut": "start", "fin": "end", "extra": {"interval": "60"}},
 }
 
-# Les bougies arrivent en listes sans noms (ordre de la doc Bybit) ; noms repris de Binance pour le panel
 BYBIT_KLINE_COLS = ["open_time", "open", "high", "low", "close", "volume", "quote_volume"]
 
 UNE_HEURE_MS = 3600 * 1000
@@ -49,7 +46,6 @@ def _timestamp(ligne, kind: str) -> int:
 def fetch_bybit_page(kind: str, symbol: str, debut_ms: int, fin_ms: int,
                      essais: int = 5) -> list:
     """Une requête Bybit : au plus `limite` points entre debut_ms et fin_ms (inclus).
-
     Bybit renvoie les points du plus récent au plus ancien. Les erreurs passagères
     du serveur (« svc error », coupure réseau) sont retentées avec une attente croissante.
     """
@@ -66,17 +62,17 @@ def _requete_bybit(kind: str, symbol: str, debut_ms: int, fin_ms: int) -> list:
     """Envoie une seule requête à Bybit et renvoie la liste de points."""
     info = BYBIT_KINDS[kind]
     params = {
-        "category": "linear",  # perpétuels USDT
+        "category": "linear",  
         "symbol": symbol,
         "limit": info["limite"],
-        info["debut"]: debut_ms,  # le funding exige toujours le début ET la fin
+        info["debut"]: debut_ms,  
         info["fin"]: fin_ms,
         **info["extra"],
     }
     response = requests.get(BYBIT_BASE_URL + info["chemin"], params=params, timeout=30)
     response.raise_for_status()
     data = response.json()
-    # Bybit signale ses erreurs (symbole inconnu, paramètre invalide...) avec un code HTTP 200
+    # Bybit signale ses erreurs avec un code HTTP 200
     if data["retCode"] != 0:
         raise RuntimeError(f"Bybit {kind} {symbol} : {data['retMsg']}")
     return data["result"]["list"]
@@ -84,20 +80,19 @@ def _requete_bybit(kind: str, symbol: str, debut_ms: int, fin_ms: int) -> list:
 
 def download_bybit(kind: str, symbol: str, start: str = DEBUT_DONNEES, end: str = END) -> pd.DataFrame:
     """Télécharge une série Bybit sur [start, end] et renvoie un DataFrame trié en UTC.
-
     Comme les réponses vont du plus récent au plus ancien, la boucle remonte le
     temps : après chaque page, la nouvelle fin est juste avant le point le plus ancien reçu.
     """
     debut_ms = _to_ms(start)
-    fin_ms = _to_ms(end) + 24 * UNE_HEURE_MS - 1  # END est inclus : jusqu'à 23:59:59.999
+    fin_ms = _to_ms(end) + 24 * UNE_HEURE_MS - 1  
     lignes = []
     while fin_ms >= debut_ms:
         page = fetch_bybit_page(kind, symbol, debut_ms, fin_ms)
-        if not page:  # plus rien avant : contrat pas encore coté
+        if not page:  
             break
         lignes.extend(page)
         fin_ms = _timestamp(page[-1], kind) - 1
-        time.sleep(0.1)  # rester loin de la limite de requêtes de Bybit
+        time.sleep(0.1)  # pour rester loin de la limite de requêtes de Bybit
 
     return clean_bybit(lignes, kind)
 
@@ -112,7 +107,6 @@ def clean_bybit(lignes: list, kind: str) -> pd.DataFrame:
             columns={"fundingRateTimestamp": "calc_time", "fundingRate": "last_funding_rate"})
         colonne_temps = "calc_time"
     else:
-        # openInterest compte les deux côtés, singleOpenInterest un seul (comme Binance)
         df = pd.DataFrame(lignes, columns=["timestamp", "openInterest", "singleOpenInterest"])
         df = df.rename(columns={"timestamp": "create_time", "openInterest": "open_interest",
                                 "singleOpenInterest": "single_open_interest"})
@@ -125,11 +119,9 @@ def clean_bybit(lignes: list, kind: str) -> pd.DataFrame:
         df[col] = pd.to_numeric(df[col])
     df[colonne_temps] = pd.to_datetime(df[colonne_temps].astype("int64"), unit="ms", utc=True)
 
-    # Deux pages peuvent partager un point à leur frontière
     df = df.drop_duplicates(colonne_temps).sort_values(colonne_temps).reset_index(drop=True)
 
     if kind == "funding":
-        # Intervalle entre deux paiements (8, 4 ou 1 h) ; le premier paiement prend celui du suivant
         ecart = df["calc_time"].diff().dt.total_seconds() / 3600
         df["funding_interval_hours"] = ecart.round().bfill().astype("int64")
     return df

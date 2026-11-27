@@ -1,4 +1,4 @@
-"""Télécharge l'indice Fear & Greed dans data/raw/fng/.
+"""Télécharge l'indice Fear & Greed.
 
 Lancement depuis la racine du dépôt : uv run python -m scripts.telecharger_fng
 Si le fichier existe déjà, il est relu et non retéléchargé.

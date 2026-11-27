@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT_DIR / "data"))
-RAW_DIR = DATA_DIR / "raw"          # fichiers téléchargés, jamais modifiés
+RAW_DIR = DATA_DIR / "raw"          # fichiers téléchargés et jamais modifiés
 INTERIM_DIR = DATA_DIR / "interim"  # panels horaires
 
 # Début en 2023 : avant mi-décembre 2022, les ratios des gros traders manquent (voir README)
@@ -35,7 +35,7 @@ BINANCE_BASE_URL = "https://data.binance.vision/data"
 BYBIT_BASE_URL = "https://api.bybit.com"
 FNG_URL = "https://api.alternative.me/fng/"
 
-# Stockage S3 du SSPCloud : le dossier diffusion/ est lisible par tous, sans identifiants
+# Stockage S3 du SSPCloud : le dossier diffusion/ est lisible sans identifiants
 S3_ENDPOINT = "https://minio.lab.sspcloud.fr"
 S3_BUCKET = "ethany1"
 S3_PREFIX = "diffusion/ensae-squeeze"

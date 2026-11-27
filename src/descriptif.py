@@ -1,4 +1,4 @@
-"""Statistiques et graphiques descriptifs appelés par rapport.ipynb."""
+"""Statistiques descriptives appelées par rapport.ipynb."""
 
 import textwrap
 from statistics import NormalDist
@@ -17,6 +17,7 @@ COULEURS = {"BTCUSDT": "#2a78d6", "ETHUSDT": "#eb6834", "SOLUSDT": "#1baf7a", "B
             "DOGEUSDT": "#a0522d", "LTCUSDT": "#7f7f7f", "XRPUSDT": "#17becf", "DOTUSDT": "#d6338a",
             "LINKUSDT": "#3f3fbf", "ADAUSDT": "#8fbf3f"}
 HEURES_PAR_AN = 24 * 365
+
 
 NOMS_POSITIONNEMENT = {
     "funding_8h": "Funding (% par 8 h)",
@@ -43,7 +44,6 @@ def charger_panel(avec_chauffe: bool = False, symboles: list[str] = SYMBOLS) -> 
 
 def periode_etude(panel: pd.DataFrame) -> pd.DataFrame:
     """Lignes de la période d'étude, sans la chauffe."""
-    # La ligne START 00:00 contient la bougie de 23 h la veille : elle est exclue, comme dans grille_horaire.
     return panel.loc[panel.index > pd.Timestamp(START, tz="UTC")]
 
 
@@ -63,7 +63,6 @@ def taker_ratio_bougies(crypto: pd.DataFrame) -> pd.Series:
 
 def mois_de_la_bougie(panel: pd.DataFrame) -> pd.Index:
     """Mois de chaque ligne au format AAAA-MM, d'après le début de sa bougie."""
-    # La ligne 2026-10-01 00:00 couvre la dernière heure de septembre : elle reste en septembre.
     return (panel.index - pd.Timedelta("1h")).strftime("%Y-%m").rename("mois")
 
 
@@ -89,7 +88,8 @@ def comparer_taker(panel: pd.DataFrame) -> pd.DataFrame:
 
 
 def tableau_cryptos(panel: pd.DataFrame) -> pd.DataFrame:
-    """Taille, volatilité, rendement et funding de chaque crypto sur la période d'étude, de la plus grosse à la plus petite."""
+    """Taille, volatilité, rendement et funding de chaque crypto sur la période d'étude,
+    de la plus grosse à la plus petite."""
     lignes = {}
     for symbole, crypto in panel.groupby("symbol"):
         rendements = rendements_horaires(crypto)
@@ -216,7 +216,6 @@ def graphique_series(panel: pd.DataFrame, variables: pd.DataFrame) -> None:
         axes[0].annotate(evenement, (pd.Timestamp(date, tz="UTC"), 1), xycoords=("data", "axes fraction"),
                          xytext=(3, -12), textcoords="offset points", fontsize=9, color="grey")
     axes[2].axhline(0.01, color="black", linestyle="--", linewidth=1)
-    # Deux pics de SOL (janvier 2023 et octobre 2025) descendent sous −0,2 % et écraseraient la série
     axes[2].set_ylim(-0.06, 0.11)
     axes[3].axhline(1, color="black", linestyle="--", linewidth=1)
     axes[4].axhline(1, color="black", linestyle="--", linewidth=1)
@@ -295,8 +294,8 @@ def tableau_episodes(panel_cible: pd.DataFrame, horizon: int = HORIZON) -> pd.Da
     # Deux heures positives à moins d'un horizon d'écart ont des fenêtres qui se chevauchent :
     # elles décrivent la même hausse, donc le même épisode.
     positives = panel_cible[panel_cible["shortsqueeze"].fillna(False)].reset_index()
-    nouvel_episode = (positives["symbol"] != positives["symbol"].shift()) | \
-                     (positives["t"].diff() >= pd.Timedelta(hours=horizon))
+    nouvel_episode = ((positives["symbol"] != positives["symbol"].shift())
+                      | (positives["t"].diff() >= pd.Timedelta(hours=horizon)))
     positives["episode"] = nouvel_episode.cumsum()
     groupes = positives.groupby("episode")
 
@@ -348,7 +347,8 @@ def graphique_episodes_par_annee(episodes_cible: pd.DataFrame) -> None:
 
     ax.set_ylim(0, bas.max() * 1.15)
     ax.set_ylabel("Nombre d'épisodes")
-    ax.set_title(f"{len(episodes_cible)} épisodes de squeeze, très inégalement répartis dans le temps (2026 : jusqu'en septembre)")
+    ax.set_title(f"{len(episodes_cible)} épisodes de squeeze, très inégalement répartis dans le temps "
+                 "(2026 : jusqu'en septembre)")
     ax.grid(axis="y", alpha=0.3)
     ax.legend(ncols=2, fontsize=9, bbox_to_anchor=(1.01, 1), loc="upper left")
     fig.tight_layout()
@@ -387,7 +387,8 @@ def graphique_entonnoir(nombres: pd.DataFrame) -> None:
 
     ax.set_xticks(np.arange(len(parts.columns)) + 0.4 - largeur / 2, [textwrap.fill(c, 25) for c in parts.columns])
     ax.set_ylabel("Part des heures C1 (%)")
-    ax.set_title("Parmi les fortes hausses, combien sont des rachats de shorts ? (nombre d'heures au-dessus des barres)")
+    ax.set_title("Parmi les fortes hausses, combien sont des rachats de shorts ? "
+                 "(nombre d'heures au-dessus des barres)")
     ax.grid(axis="y", alpha=0.3)
     ax.legend()
     plt.show()
@@ -455,7 +456,8 @@ def sensibilite(panel_complet: pd.DataFrame) -> pd.DataFrame:
 
 
 def graphique_exemples(panel_cible: pd.DataFrame, exemples: list[tuple[str, str]]) -> None:
-    """Prix, open interest, funding et ratio long/short autour d'épisodes donnés par (crypto, début), une colonne par épisode."""
+    """Prix, open interest, funding et ratio long/short autour d'épisodes donnés par (crypto, début),
+    une colonne par épisode."""
     noms_series = ["Prix (USDT)", "Open interest (en crypto)", "Funding (% par 8 h)", "L/S tous comptes"]
     fig, axes = plt.subplots(len(noms_series), len(exemples), figsize=(8 * len(exemples), 10), sharex="col")
 
@@ -509,7 +511,6 @@ def variables_etape_4(panel_cible_complet: pd.DataFrame) -> pd.DataFrame:
     panel["basis_pct"] = panel["basis"] * 100
     panel["variation_oi_24h"] = 100 * par_crypto["oi"].pct_change(24)
     panel["variation_oi_7j"] = 100 * par_crypto["oi"].pct_change(24 * 7)
-    # Le ratio taker d'une heure n'a pas de mémoire (étape 2) : on le calcule sur les 24 dernières heures
     achats_24h = par_crypto["taker_buy_volume"].transform(lambda s: s.rolling(24).sum())
     volume_24h = par_crypto["volume"].transform(lambda s: s.rolling(24).sum())
     panel["taker_24h"] = achats_24h / (volume_24h - achats_24h)
@@ -535,7 +536,6 @@ def evenements_de_marche(episodes_cible: pd.DataFrame) -> pd.DataFrame:
 
 def numero_decile(valeurs: pd.Series) -> pd.Series:
     """Décile (1 à 10) de chaque valeur : 1 + nombre de bornes de décile qu'elle dépasse.
-
     Les ex-aequo restent ensemble : un décile peut être vide ou plus gros.
     """
     bornes = valeurs.quantile([d / 10 for d in range(1, 10)])
@@ -572,7 +572,6 @@ def rendement_par_decile(panel: pd.DataFrame, variable: str) -> pd.DataFrame:
 
 def taux_ensemble(taux: pd.DataFrame) -> pd.Series:
     """Taux de squeeze (%) par décile, toutes cryptos ensemble."""
-    # Les déciles sont calculés crypto par crypto : chaque crypto pèse autant dans chaque décile
     ensemble = taux.groupby("decile")[["heures_positives", "heures"]].sum()
     return 100 * ensemble["heures_positives"] / ensemble["heures"]
 
@@ -662,9 +661,8 @@ def reprises_bootstrap(nb_semaines: int) -> np.ndarray:
 def intervalle_bootstrap(semaines: pd.PeriodIndex, avec: np.ndarray, sans: np.ndarray,
                          positif: np.ndarray) -> np.ndarray:
     """Intervalle à 95 % du rapport des taux de squeeze avec et sans signal, en tirant des semaines entières.
-
     Une semaine est tirée avec toutes ses heures et toutes ses cryptos : les heures positives d'un même squeeze
-    et les squeezes simultanés de plusieurs cryptos restent ensemble, car ils ne sont pas indépendants.
+    et les squeezes simultanés de plusieurs cryptos restent ensemble car ils ne sont pas indépendants.
     """
     comptes = pd.DataFrame({"heures_avec": avec, "squeezes_avec": avec & positif,
                             "heures_sans": sans, "squeezes_sans": sans & positif}).groupby(semaines).sum()
@@ -673,7 +671,6 @@ def intervalle_bootstrap(semaines: pd.PeriodIndex, avec: np.ndarray, sans: np.nd
     heures_avec, squeezes_avec, heures_sans, squeezes_sans = totaux_des_tirages.T
     with np.errstate(divide="ignore", invalid="ignore"):
         rapports = (squeezes_avec / heures_avec) / (squeezes_sans / heures_sans)
-    # Sans squeeze hors signal, le rapport est infini (gardé) ; sans heure avec signal, il n'existe pas (écarté)
     return np.quantile(rapports[~np.isnan(rapports)], [0.025, 0.975], method="inverted_cdf")
 
 
@@ -687,7 +684,7 @@ COULEURS_GROUPES = ["#d62728", "#ff9f1c", "grey"]
 
 
 def groupes_etude_evenement(panel_cible: pd.DataFrame, episodes_cible: pd.DataFrame) -> dict:
-    """Pics des squeezes, pics des fortes hausses sans baisse d'open interest, et heures ordinaires tirées au hasard."""
+    """Pics des squeezes, pics des fortes hausses sans baisse d'open interest et heures ordinaires tirées au hasard."""
     hausses_sans_rachat = tableau_episodes(panel_cible.assign(shortsqueeze=panel_cible["c1"] & ~panel_cible["c2"]))
     ordinaires = panel_cible[panel_cible["c1"].eq(False)].sample(1000, random_state=0)
     return {
@@ -728,7 +725,6 @@ def etude_evenement(panel_complet: pd.DataFrame, groupes: dict) -> pd.DataFrame:
 
 def bande_etude_evenement(panel_complet: pd.DataFrame, pics: pd.DataFrame) -> pd.DataFrame:
     """Bande à 95 % autour de la moyenne de chaque variable, par bootstrap : les épisodes sont tirés par semaine du pic.
-
     Les squeezes simultanés de plusieurs cryptos tombent la même semaine : ils sont tirés ensemble.
     Lignes : "bas" et "haut" ; colonnes : (variable, heure depuis le pic).
     """
@@ -761,7 +757,8 @@ def graphique_etude_evenement(profils: pd.DataFrame, bandes: dict) -> None:
     for ax in axes[1]:
         ax.set_xlabel("Heures avant (−) et après (+) le pic")
     axes[0, 0].legend(fontsize=9)
-    fig.suptitle("Moyenne des variables autour du pic (tirets : pic ; pour les heures ordinaires, une heure au hasard)\n"
+    fig.suptitle("Moyenne des variables autour du pic "
+                 "(tirets : pic ; pour les heures ordinaires, une heure au hasard)\n"
                  "Zones colorées : intervalle de confiance à 95 % (bootstrap par semaines)")
     fig.tight_layout()
     plt.show()
@@ -818,7 +815,8 @@ def croisement_funding_oi(panel_variables: pd.DataFrame) -> pd.DataFrame:
 
 
 def rapports_croisement(panel_variables: pd.DataFrame) -> pd.DataFrame:
-    """Rapports des taux de squeeze entre les cases du croisement funding × open interest, avec leur intervalle à 95 %."""
+    """Rapports des taux de squeeze entre les cases du croisement funding × open interest,
+    avec leur intervalle à 95 %."""
     donnees = panel_variables.dropna(subset=["funding_8h", "variation_oi_24h", "shortsqueeze"])
     negatif = (donnees["funding_8h"] < 0).to_numpy()
     hausse = (donnees["variation_oi_24h"] > 0).to_numpy()
@@ -858,7 +856,9 @@ CLASSES_FNG = {"Peur extrême\n(0-25)": 25, "Peur\n(26-46)": 46, "Neutre\n(47-54
 
 
 def decile_par_crypto(panel: pd.DataFrame, variable: str, par_periode: bool = False) -> pd.Series:
-    """Décile (1 à 10) de la variable, calculé crypto par crypto (et période par période si demandé) ; NaN si elle manque."""
+    """Décile (1 à 10) de la variable, calculé crypto par crypto (et période par période si demandé).
+    NaN si la variable manque.
+    """
     groupes = [panel["symbol"]]
     if par_periode:
         en_2023_2024 = (panel.index - pd.Timedelta("1h")).year <= 2024
@@ -882,7 +882,7 @@ def signaux_h2(panel_variables: pd.DataFrame, par_periode: bool = False) -> pd.D
 
 def groupes_etape_5(symboles: pd.Series, dates) -> dict:
     """Masques des quatre groupes comparés : grosses ou petites cryptos, 2023-2024 ou 2025-2026."""
-    annee = (pd.DatetimeIndex(dates) - pd.Timedelta("1h")).year  # année de la bougie, comme mois_de_la_bougie
+    annee = (pd.DatetimeIndex(dates) - pd.Timedelta("1h")).year  
     trois_grosses = symboles.isin(SYMBOLS_DESCRIPTIF).to_numpy()
     return {"BTC, ETH, SOL": trois_grosses, "7 autres cryptos": ~trois_grosses,
             "2023-2024": np.asarray(annee <= 2024), "2025-2026": np.asarray(annee >= 2025)}
@@ -890,8 +890,8 @@ def groupes_etape_5(symboles: pd.Series, dates) -> dict:
 
 def effet_des_signaux(panel_variables: pd.DataFrame, episodes_cible: pd.DataFrame,
                       par_periode: bool = False) -> pd.DataFrame:
-    """Pour chaque groupe et chaque signal : taux de squeeze (%) avec et sans le signal, leur rapport et son intervalle à 95 %.
-
+    """Pour chaque groupe et chaque signal : taux de squeeze (%) avec et sans le signal,
+    leur rapport et son intervalle à 95 %.
     Avec par_periode, les déciles sont recalculés dans chaque période au lieu de toute la période d'étude.
     """
     signaux = signaux_h2(panel_variables, par_periode)
@@ -905,8 +905,9 @@ def effet_des_signaux(panel_variables: pd.DataFrame, episodes_cible: pd.DataFram
     for groupe, dans_groupe in groupes_etape_5(panel_variables["symbol"], panel_variables.index).items():
         for signal in signaux.columns:
             connu = dans_groupe & (signaux[signal].notna() & squeeze.notna()).to_numpy()
-            avec = connu & signaux[signal].fillna(False).to_numpy(bool)
-            sans = connu & ~signaux[signal].fillna(False).to_numpy(bool)
+            present = signaux[signal].fillna(False).to_numpy(bool)
+            avec = connu & present
+            sans = connu & ~present
             taux_avec, taux_sans = positif[avec].mean(), positif[sans].mean()
             ic_bas, ic_haut = intervalle_bootstrap(semaines, avec, sans, positif)
             lignes.append({
@@ -924,7 +925,8 @@ def effet_des_signaux(panel_variables: pd.DataFrame, episodes_cible: pd.DataFram
 
 
 def effet_selon_deciles(panel_variables: pd.DataFrame, episodes_cible: pd.DataFrame) -> pd.DataFrame:
-    """Pour 2023-2024 et 2025-2026 : effet des signaux avec des déciles calculés sur 2023-2026 ou dans chaque période."""
+    """Pour 2023-2024 et 2025-2026 : effet des signaux avec des déciles calculés sur 2023-2026
+    ou dans chaque période."""
     cles = ["groupe", "signal"]
     fixes = effet_des_signaux(panel_variables, episodes_cible).set_index(cles)
     par_periode = effet_des_signaux(panel_variables, episodes_cible, par_periode=True).set_index(cles)
@@ -957,7 +959,7 @@ def graphique_effet_des_signaux(effets: pd.DataFrame) -> None:
             ax.annotate(f"{rapport:.1f}", (position, rapport), xytext=(7, 0), textcoords="offset points",
                         va="center", fontsize=8)
     ax.axhline(1, color="black", linestyle="--", linewidth=1)
-    # Échelle logarithmique : un rapport de 2 et un rapport de 0,5 sont à la même distance de 1
+    
     ax.set_yscale("log")
     ax.minorticks_off()
     graduations = [0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32]
@@ -1011,19 +1013,22 @@ def graphique_fng(tableau: pd.DataFrame) -> None:
 
 
 def correlations_fng(panel_variables: pd.DataFrame) -> pd.Series:
-    """Corrélation de Spearman du Fear & Greed avec les variables de prix et de positionnement, en moyenne sur les cryptos."""
+    """Corrélation de Spearman du Fear & Greed avec les variables de prix et de positionnement,
+    en moyenne sur les cryptos."""
     colonnes = list(NOMS_PRIX) + list(NOMS_ETAPE_4)
-    tableaux = [crypto[colonnes].corrwith(crypto["fng"], method="spearman") for _, crypto in panel_variables.groupby("symbol")]
+    tableaux = [crypto[colonnes].corrwith(crypto["fng"], method="spearman")
+                for _, crypto in panel_variables.groupby("symbol")]
     moyenne = sum(tableaux) / len(tableaux)
     return moyenne.rename({**NOMS_PRIX, **NOMS_ETAPE_4}).rename("Corrélation avec le Fear & Greed")
 
 
 def cible_bybit(fusion_complet: pd.DataFrame, delta_sigma: float = 1.5) -> pd.DataFrame:
-    """Cible recalculée avec les prix et l'open interest de Bybit : C1 et C2 seulement (pas de volume acheteur chez Bybit)."""
+    """Cible recalculée avec les prix et l'open interest de Bybit.
+    C1 et C2 seulement : Bybit ne donne pas le volume acheteur nécessaire à C3.
+    """
     colonnes = {"high_bybit": "high", "close_bybit": "close", "oi_bybit": "oi",
                 "funding_horaire_bybit": "funding_horaire", "volume_bybit": "volume"}
     bybit = fusion_complet[["symbol", *colonnes]].rename(columns=colonnes)
-    # Colonnes absentes chez Bybit : C3 et les ratios long/short ne sont pas calculables
     bybit[["taker_buy_volume", "ls_global", "ls_top_positions"]] = np.nan
     bybit = bybit[bybit["close"].notna().groupby(bybit["symbol"]).transform("any")]
     cible = ajouter_cible(bybit, delta_sigma=delta_sigma)
@@ -1032,7 +1037,7 @@ def cible_bybit(fusion_complet: pd.DataFrame, delta_sigma: float = 1.5) -> pd.Da
 
 
 def sans_c3(panel_cible_complet: pd.DataFrame) -> pd.DataFrame:
-    """Cible Binance sans C3, pour la comparer à armes égales à celle de Bybit."""
+    """Cible Binance sans C3, pour la comparer à celle de Bybit."""
     return panel_cible_complet.assign(shortsqueeze=panel_cible_complet["c1"] & panel_cible_complet["c2"])
 
 
@@ -1064,9 +1069,11 @@ def accord_binance_bybit(episodes_binance: pd.DataFrame, episodes_bybit: pd.Data
 def graphique_binance_bybit(cible_binance: pd.DataFrame, episodes_binance: pd.DataFrame,
                             cible_bybit_complet: pd.DataFrame, episodes_bybit: pd.DataFrame) -> None:
     """Étude d'événement sur chaque plateforme, avec ses propres données : prix, open interest et funding."""
+    profil_binance = etude_evenement(cible_binance, {"pics": episodes_binance})["pics"]
+    profil_bybit = etude_evenement(cible_bybit_complet, {"pics": episodes_bybit})["pics"]
     profils = {
-        f"Binance ({len(episodes_binance)} épisodes)": etude_evenement(cible_binance, {"pics": episodes_binance})["pics"],
-        f"Bybit ({len(episodes_bybit)} épisodes)": etude_evenement(cible_bybit_complet, {"pics": episodes_bybit})["pics"],
+        f"Binance ({len(episodes_binance)} épisodes)": profil_binance,
+        f"Bybit ({len(episodes_bybit)} épisodes)": profil_bybit,
     }
     variables = ["Prix (% depuis −72 h)", "Open interest (% depuis −72 h)", "Funding (% par 8 h)"]
     fig, axes = plt.subplots(1, 3, figsize=(17, 4.5))
@@ -1079,6 +1086,7 @@ def graphique_binance_bybit(cible_binance: pd.DataFrame, episodes_binance: pd.Da
         ax.grid(alpha=0.3)
     axes[2].axhline(0, color="grey", linewidth=0.8)
     axes[0].legend()
-    fig.suptitle("Le même mécanisme sur Binance et sur Bybit ? Squeezes définis par C1 + C2, chaque plateforme avec ses données")
+    fig.suptitle("Le même mécanisme sur Binance et sur Bybit ? "
+                 "Squeezes définis par C1 + C2, chaque plateforme avec ses données")
     fig.tight_layout()
     plt.show()
