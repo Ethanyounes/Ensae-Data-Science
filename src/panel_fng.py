@@ -10,14 +10,12 @@ from src.collecte_fng import FNG_FILE
 
 def clean_fng(df: pd.DataFrame) -> pd.DataFrame:
     """Indice quotidien, avec l'heure t_fng à partir de laquelle chaque valeur est utilisée.
-
     La valeur du jour J est publiée vers minuit, sans garantie qu'elle soit connue à 00:00 :
     on ne l'utilise qu'à partir de J+1 00:00.
     """
-    # fng_classe n'est pas gardée : elle se déduit de fng
+   
     df = df[["date", "fng"]].rename(columns={"date": "fng_date"})
     df["fng_date"] = df["fng_date"].dt.as_unit("ms")
-    # Un indice hors de [0, 100] est une erreur d'enregistrement
     df["fng"] = df["fng"].where(df["fng"].between(0, 100))
     df = df.drop_duplicates("fng_date").sort_values("fng_date")
     df["t_fng"] = (df["fng_date"] + pd.Timedelta("1D")).dt.as_unit("ms")
@@ -26,7 +24,6 @@ def clean_fng(df: pd.DataFrame) -> pd.DataFrame:
 
 def ajouter_fng(panel: pd.DataFrame) -> pd.DataFrame:
     """Panel d'une crypto complété de la dernière valeur de l'indice utilisable à chaque heure t.
-
     Un jour manquant (2024-10-26) reprend la valeur précédente ; fng_date dit de quel jour elle date.
     """
     fng = clean_fng(pd.read_parquet(FNG_FILE))

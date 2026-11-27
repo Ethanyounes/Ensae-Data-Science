@@ -1,6 +1,6 @@
 """Envoi des données sur le S3 du SSPCloud et lecture publique.
 
-L'envoi demande les identifiants du fichier .env : uv run --env-file .env python ...
+L'envoi demande les identifiants du fichier .env : uv run --env-file .env python 
 """
 
 from pathlib import Path
@@ -12,7 +12,7 @@ from src.config import DATA_DIR, S3_BUCKET, S3_ENDPOINT, S3_PREFIX, S3_PUBLIC_UR
 
 
 def connexion_s3() -> s3fs.S3FileSystem:
-    """Connexion au S3 (les clés sont lues dans les variables d'environnement)."""
+    """Connexion au S3."""
     return s3fs.S3FileSystem(client_kwargs={"endpoint_url": S3_ENDPOINT})
 
 

@@ -16,13 +16,11 @@ def build_panel_bybit_crypto(symbol: str) -> pd.DataFrame:
     bougies["t"] = (bougies["open_time"] + pd.Timedelta("1h")).dt.as_unit("ms")
     bougies = bougies.drop(columns="open_time").drop_duplicates("t").set_index("t")
 
-    # Relevé instantané, connu à son heure (vérifié en le comparant à l'open interest Binance).
-    # single_open_interest compte un seul côté du marché, comme l'open interest de Binance.
     oi = pd.read_parquet(bybit_file("open_interest", symbol))
     oi["t"] = oi["create_time"].dt.as_unit("ms")
     oi = oi.drop_duplicates("t").set_index("t")[["single_open_interest"]]
     oi = oi.rename(columns={"single_open_interest": "oi"})
-    # Un open interest nul ou négatif est impossible : erreur d'enregistrement (même règle que Binance)
+    # Un open interest nul ou négatif est impossible : c'est une erreur d'enregistrement comme pour Binance
     oi["oi"] = oi["oi"].mask(oi["oi"] <= 0)
 
     panel = pd.DataFrame(index=grille_horaire()).join(bougies).join(oi)
@@ -50,7 +48,6 @@ def controles_bybit(panel: pd.DataFrame) -> pd.DataFrame:
     for symbol, crypto in panel.groupby("symbol"):
         hors_bornes = (crypto[["open", "close"]].max(axis=1) > crypto["high"]) | (
             crypto[["open", "close"]].min(axis=1) < crypto["low"])
-        # Open interest identique trois heures de suite : série probablement non mise à jour
         inchange = crypto["oi"].diff().eq(0)
         fige = inchange & inchange.shift(1, fill_value=False)
 
@@ -69,7 +66,6 @@ def controles_bybit(panel: pd.DataFrame) -> pd.DataFrame:
 
 def extremes_bybit(panel: pd.DataFrame) -> pd.DataFrame:
     """Plus fortes variations horaires et funding extrêmes par crypto, avec leur date.
-
     Elles sont gardées dans le panel : ce sont de vrais événements de marché, comme un squeeze.
     """
     resultats = {}

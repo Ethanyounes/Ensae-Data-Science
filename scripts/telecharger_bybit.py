@@ -1,4 +1,4 @@
-"""Télécharge les séries Bybit de toutes les cryptos (relançable sans risque).
+"""Télécharge les séries Bybit de toutes les cryptos.
 
 uv run python -m scripts.telecharger_bybit
 """
@@ -16,7 +16,7 @@ if __name__ == "__main__":
             else:
                 try:
                     df = download_bybit(kind, symbol)
-                except RuntimeError as erreur:  # contrat absent de Bybit
+                except RuntimeError as erreur:  
                     print(f"{symbol:9} {kind:14} ignoré : {erreur}")
                     continue
                 save_bybit(df, kind, symbol)

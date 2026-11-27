@@ -1,13 +1,13 @@
 """Cible : y a-t-il un short squeeze dans les heures qui suivent t ? (conditions C1, C2, C3 du README)
 
-Le calcul se fait d'un coup sur toutes les heures d'une crypto, sans boucle, et les seuils
+Le calcul se fait d'un coup sur toutes les heures d'une crypto, sans boucle et les seuils
 sont des paramètres pour pouvoir tester les variantes.
 """
 
 import numpy as np
 import pandas as pd
 
-# Valeurs de base. Les variantes du README changent un seul de ces paramètres.
+# Valeurs de base. Les variantes changent un seul de ces paramètres.
 K_SIGMA = 3        # C1 : hausse d'au moins k écarts-types...
 PLANCHER = 0.05    # ... et d'au moins 5 %
 DELTA_OI = 0.10    # C2 : baisse de l'open interest d'au moins 10 %
@@ -24,7 +24,7 @@ def delai_du_pic(high: pd.Series, horizon: int) -> np.ndarray:
 
 def sigma_oi_30j(oi: pd.Series, horizon: int = HORIZON) -> pd.Series:
     """Écart-type des variations relatives de l'open interest sur `horizon` heures, sur les 30 derniers jours."""
-    # Calculé directement sur l'horizon : σ horaire × √24 le sous-estime, car les variations d'OI se prolongent
+    # Calculé directement sur l'horizon : σ horaire × √24 le sous-estime car les variations d'OI se prolongent
     return oi.pct_change(horizon).rolling("30D").std()
 
 
@@ -32,7 +32,6 @@ def cible_crypto(crypto: pd.DataFrame, k: float = K_SIGMA, plancher: float = PLA
                  delta: float = DELTA_OI, horizon: int = HORIZON,
                  delta_sigma: float | None = None) -> pd.DataFrame:
     """Conditions C1, C2, C3 et grandeurs qui servent à les tester, pour chaque heure t d'une crypto.
-
     Avec `delta_sigma`, la baisse d'open interest exigée par C2 vaut delta_sigma écarts-types au lieu de delta.
     """
     close = crypto["close"]
@@ -41,7 +40,6 @@ def cible_crypto(crypto: pd.DataFrame, k: float = K_SIGMA, plancher: float = PLA
 
     delai = delai_du_pic(crypto["high"], horizon)
     connue = ~np.isnan(delai)
-    # Numéro de ligne du pic (la ligne t elle-même quand le pic est inconnu, masquée plus bas)
     ligne_pic = np.arange(len(crypto)) + np.where(connue, delai, 0).astype(int)
 
     hausse_pic = crypto["high"].to_numpy()[ligne_pic] / close - 1

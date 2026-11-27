@@ -13,7 +13,6 @@ Sur les plateformes crypto, l'essentiel des échanges porte sur des **contrats p
 - **H1, shorts informés** : une accumulation de shorts annonce une baisse, et le positionnement n'annonce pas de squeeze.
 - **H2, shorts fragiles** : des shorts accumulés avec du levier rendent le marché vulnérable à un rachat forcé.
 
-On répond par l'analyse descriptive, sans modèle de prévision (non demandé pour l'ENSAE).
 
 ## Réponse en bref
 
@@ -42,7 +41,7 @@ Binance fournit les données principales. Bybit sert de contrôle : les constats
 
 ### Panel horaire et convention de temps
 
-Les sources sont nettoyées (noms, types, dates UTC, valeurs impossibles, doublons) puis réunies en un panel d'une ligne par crypto et par heure t : 33 576 heures par crypto, chauffe comprise, et toutes les heures de la période, même sans données. Les valeurs manquantes ne sont jamais comblées.
+Les sources sont nettoyées (noms, types, dates UTC, valeurs impossibles, doublons) puis réunies en un panel d'une ligne par crypto et par heure t : 33 576 heures par crypto, chauffe comprise et toutes les heures de la période, même sans données. On ne comble pas les valeurs manquantes.
 
 **La ligne t ne contient que ce qui est connu à t**, pour qu'aucune variable ne voie le futur :
 
@@ -64,7 +63,7 @@ Une heure t est **positive** s'il y a un short squeeze dans les 24 heures qui su
 
 `Close_t` et l'open interest de départ sont ceux de la ligne t, les derniers connus avant la fenêtre. L'étape 3 part de δ = 10 %. À partir de l'étape 4, δ vaut 1,5 écart-type des variations d'open interest sur 24 h des 30 derniers jours, ce qui donne à C2 la même sévérité pour chaque crypto. δ = 1,2 σ sert de contrôle. Les variantes testées sont k = 2,5 ou 4, un plancher de 3 ou 8 %, δ = 5 ou 15 % et un horizon de 12 ou 48 h.
 
-Deux heures positives d'une même crypto à moins de 24 h d'écart appartiennent au même **épisode**, car leurs fenêtres se chevauchent.
+Deux heures positives d'une même crypto à moins de 24 h d'écart appartiennent au même **épisode** car leurs fenêtres se chevauchent.
 
 ### Analyse descriptive (`src/descriptif.py`)
 
@@ -87,10 +86,10 @@ uv run python -m nbconvert --to notebook --execute --inplace rapport.ipynb
 
 Sans uv : `pip install -r requirements.txt`, puis ouvrir `rapport.ipynb` dans Jupyter. Le notebook lit les données sur le S3 et tourne en deux minutes environ.
 
-Pour tout refaire depuis les sources (long : près de 16 000 archives Binance), mettre `RECONSTRUIRE = True` au début du notebook, ou lancer les scripts :
+Pour tout refaire depuis les sources (long car près de 16 000 archives Binance), mettre `RECONSTRUIRE = True` au début du notebook, ou lancer les scripts :
 
 ```bash
-uv run python -m scripts.choisir_cryptos       # facultatif : retrouve la liste SYMBOLS de src/config.py (20 min)
+uv run python -m scripts.choisir_cryptos       # facultatif, pour  retrouver la liste SYMBOLS de src/config.py (20 min)
 uv run python -m scripts.telecharger_binance   # archives Binance (relançable)
 uv run python -m scripts.telecharger_bybit     # séries Bybit
 uv run python -m scripts.telecharger_fng       # indice Fear & Greed
@@ -119,14 +118,3 @@ data/                    non versionné
   raw/                   fichiers téléchargés, jamais modifiés
   interim/               panels horaires (Binance, Bybit, fusion)
 ```
-
-## Travail en groupe
-
-Une branche et une pull request par tâche.
-
-| Période | A | B | C |
-|---|---|---|---|
-| Début octobre | dépôt, collecte Binance | Bybit et Fear & Greed | revue de littérature |
-| Mi à fin octobre | panel horaire | cible | variables |
-| Novembre | analyse descriptive (en commun) | | |
-| Fin novembre | robustesse | rédaction | reproductibilité |

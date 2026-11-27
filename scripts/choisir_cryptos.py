@@ -1,6 +1,6 @@
-"""Choix des cryptos : les perpétuels USDT au plus gros open interest en décembre 2022 (environ 20 min).
+"""Choix des cryptos : les perpétuels USDT au plus gros open interest en décembre 2022.
 
-uv run python -m scripts.choisir_cryptos
+uv run python -m scripts.choisir_cryptos   (environ 20 min pour que ça tourne)
 
 Règle : contrat coté avant décembre 2022, classé par open interest moyen (en USDT) de décembre 2022,
 gardé s'il existe encore sous le même nom en septembre 2026 et s'il a une paire spot du même nom.
@@ -61,7 +61,8 @@ if __name__ == "__main__":
     retenus = []
     for symbole, open_interest in classement.items():
         complet = donnees_completes(symbole)
-        print(f"{symbole:12} {open_interest / 1e6:8.1f} M USDT  {'retenu' if complet else 'exclu : données incomplètes'}")
+        decision = "retenu" if complet else "exclu : données incomplètes"
+        print(f"{symbole:12} {open_interest / 1e6:8.1f} M USDT  {decision}")
         if complet:
             retenus.append(symbole)
         if len(retenus) == NOMBRE:

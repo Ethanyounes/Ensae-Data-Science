@@ -1,8 +1,8 @@
-"""Dépose les données sur le S3 du SSPCloud (dossier public en lecture), avec la même arborescence que data/.
+"""Dépose les données sur le S3 du SSPCloud.
 
 uv run --env-file .env python -m scripts.envoyer_s3
 
-Les fichiers bruts déjà présents sur le S3 ne sont pas renvoyés ; les panels de data/interim/ le sont toujours,
+On a fait attention à ne pas renvoyer les fichiers bruts déjà présents sur le S3, mais les panels de data/interim/ le sont toujours,
 car ils changent à chaque reconstruction.
 """
 
@@ -18,6 +18,6 @@ if __name__ == "__main__":
     a_envoyer += sorted(INTERIM_DIR.glob("*.parquet"))
     print(f"{len(deja_envoyes)} fichiers bruts déjà sur le S3, {len(a_envoyer)} fichiers à envoyer")
 
-    # Un seul appel avec des listes : s3fs envoie les fichiers en parallèle
+#On choisit de faire un seul appel avec des listes : s3fs envoie les fichiers en parallèle
     s3.put([str(f) for f in a_envoyer], [chemin_s3(f.relative_to(DATA_DIR).as_posix()) for f in a_envoyer])
     print("Envoi terminé :", ", ".join(f.name for f in a_envoyer if f.parent == INTERIM_DIR))
