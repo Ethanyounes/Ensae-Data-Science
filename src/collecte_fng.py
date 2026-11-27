@@ -14,16 +14,11 @@ FNG_FILE = RAW_DIR / "fng" / "fear_greed.parquet"
 
 
 def download_fear_greed() -> pd.DataFrame:
-    """Télécharge l'indice Fear & Greed.
-
-    Pas de pagination : limit=0 renvoie tout l'historique (depuis février 2018) en une
-    seule requête. On garde tout, et pas seulement START-END : les fenêtres glissantes
-    (moyenne sur 30 jours...) ont besoin des jours avant START.
-    """
+    """Télécharge tout l'historique de l'indice (depuis février 2018) : limit=0 le renvoie en une seule requête."""
     response = requests.get(FNG_URL, params={"limit": 0, "format": "json"}, timeout=30)
     response.raise_for_status()
     data = response.json()
-    # Comme Bybit, l'API signale ses erreurs dans le contenu de la réponse
+    # Comme chez Bybit, les erreurs sont signalées dans le contenu de la réponse
     if data["metadata"]["error"]:
         raise RuntimeError(f"Fear & Greed : {data['metadata']['error']}")
     return clean_fear_greed(data["data"])
@@ -35,7 +30,7 @@ def clean_fear_greed(lignes: list) -> pd.DataFrame:
     Chaque ligne arrive sous la forme
     {"value": "57", "value_classification": "Greed", "timestamp": "1791849600"}, tout en texte.
     """
-    # Colonnes choisies : la ligne du jour contient en plus "time_until_update", inutile
+    # La ligne du jour contient en plus "time_until_update", inutile
     df = pd.DataFrame(lignes, columns=["timestamp", "value", "value_classification"])
     df = df.rename(columns={"timestamp": "date", "value": "fng",
                             "value_classification": "fng_classe"})

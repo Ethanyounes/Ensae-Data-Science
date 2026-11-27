@@ -7,7 +7,7 @@ La note porte sur les données, l'analyse descriptive, la démarche et la reprod
 ## Conventions
 - Environnement uv avec Python 3.12. Tout se lance par `uv run ...`. Après `uv add`, régénérer `requirements.txt` avec `uv export --no-hashes --no-dev > requirements.txt`.
 - pyarrow est plafonné à <25 : Smart App Control bloque la DLL `_parquet` de pyarrow 25 sur le PC Windows d'Ethan. Il bloque parfois aussi `jupyter.exe` : exécuter le notebook avec `uv run python -m nbconvert --to notebook --execute --inplace rapport.ipynb`.
-- Chemins : toujours passer par `src/config.py` (`raw_path`, `INTERIM_DIR`, `PROCESSED_DIR`). `data/` n'est jamais commité.
+- Chemins : toujours passer par `src/config.py` (`raw_path`, `INTERIM_DIR`). `data/` n'est jamais commité.
 - Données brutes : parquet, un fichier par archive Binance, timestamps en UTC.
 - Pas de fuite d'information : la cible n'utilise que ce qui se passe après t, les variables que ce qui précède t (fenêtres glissantes passées). Validation temporelle avec un trou de 24 h. Jamais d'accuracy.
 - Code et commentaires en français. Une branche et une PR par tâche.

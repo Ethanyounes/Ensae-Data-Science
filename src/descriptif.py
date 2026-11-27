@@ -47,6 +47,9 @@ def periode_etude(panel: pd.DataFrame) -> pd.DataFrame:
     return panel.loc[panel.index > pd.Timestamp(START, tz="UTC")]
 
 
+# Étapes 1 et 2 : données et variables de positionnement
+
+
 def rendements_horaires(crypto: pd.DataFrame) -> pd.Series:
     """Rendements logarithmiques horaires du perpétuel, pour une seule crypto."""
     return np.log(crypto["close"]).diff()
@@ -271,6 +274,7 @@ def persistance(variables: pd.DataFrame) -> pd.DataFrame:
 
 # Étape 3 : la cible
 
+
 VARIANTES = {
     "Base": {},
     "k = 2,5": {"k": 2.5},
@@ -412,7 +416,7 @@ def profil_episodes(episodes_cible: pd.DataFrame) -> pd.DataFrame:
 
 def variation_oi_reduite(crypto: pd.DataFrame) -> pd.Series:
     """Variation de l'open interest sur l'horizon, divisée par son écart-type des 30 derniers jours."""
-    return crypto["oi"].pct_change(HORIZON, fill_method=None) / crypto["sigma_oi_30j"]
+    return crypto["oi"].pct_change(HORIZON) / crypto["sigma_oi_30j"]
 
 
 def seuils_baisse_oi(panel_cible: pd.DataFrame) -> pd.DataFrame:
@@ -477,7 +481,9 @@ def graphique_exemples(panel_cible: pd.DataFrame, exemples: list[tuple[str, str]
     fig.tight_layout()
     plt.show()
 
+
 # Étape 4 : positionnement et squeezes, première réponse à H1/H2
+
 
 NOMS_ETAPE_4 = {
     "funding_8h": "Funding (% par 8 h)",
@@ -501,14 +507,14 @@ def variables_etape_4(panel_cible_complet: pd.DataFrame) -> pd.DataFrame:
     par_crypto = panel.groupby("symbol")
     panel["funding_8h"] = panel["funding_horaire"] * 8 * 100
     panel["basis_pct"] = panel["basis"] * 100
-    panel["variation_oi_24h"] = 100 * par_crypto["oi"].pct_change(24, fill_method=None)
-    panel["variation_oi_7j"] = 100 * par_crypto["oi"].pct_change(24 * 7, fill_method=None)
+    panel["variation_oi_24h"] = 100 * par_crypto["oi"].pct_change(24)
+    panel["variation_oi_7j"] = 100 * par_crypto["oi"].pct_change(24 * 7)
     # Le ratio taker d'une heure n'a pas de mémoire (étape 2) : on le calcule sur les 24 dernières heures
     achats_24h = par_crypto["taker_buy_volume"].transform(lambda s: s.rolling(24).sum())
     volume_24h = par_crypto["volume"].transform(lambda s: s.rolling(24).sum())
     panel["taker_24h"] = achats_24h / (volume_24h - achats_24h)
 
-    panel["rendement_7j"] = 100 * par_crypto["close"].pct_change(24 * 7, fill_method=None)
+    panel["rendement_7j"] = 100 * par_crypto["close"].pct_change(24 * 7)
     panel["volatilite_30j"] = 100 * panel["sigma_30j"] * np.sqrt(24)
     plus_haut_30j = par_crypto["high"].transform(lambda s: s.rolling("30D").max())
     panel["ecart_plus_haut_30j"] = 100 * (panel["close"] / plus_haut_30j - 1)
@@ -610,11 +616,11 @@ def comparer_bybit(fusion: pd.DataFrame) -> pd.DataFrame:
     """Accord entre Binance et Bybit, par crypto : prix, open interest sur 24 h et funding."""
     lignes = {}
     for symbole, crypto in fusion.groupby("symbol"):
-        variation_oi = crypto["oi"].pct_change(24, fill_method=None)
-        variation_oi_bybit = crypto["oi_bybit"].pct_change(24, fill_method=None)
+        variation_oi = crypto["oi"].pct_change(24)
+        variation_oi_bybit = crypto["oi_bybit"].pct_change(24)
         lignes[symbole] = {
-            "Corrélation des rendements horaires": crypto["close"].pct_change(fill_method=None).corr(
-                crypto["close_bybit"].pct_change(fill_method=None)),
+            "Corrélation des rendements horaires": crypto["close"].pct_change().corr(
+                crypto["close_bybit"].pct_change()),
             "Corrélation des variations d'OI sur 24 h": variation_oi.corr(variation_oi_bybit),
             "Corrélation du funding": crypto["funding_horaire"].corr(crypto["funding_horaire_bybit"]),
             "Écart de prix moyen (%)": 100 * (crypto["close"] / crypto["close_bybit"] - 1).abs().mean(),
@@ -842,7 +848,9 @@ def correlations_prix_positionnement(panel_variables: pd.DataFrame) -> pd.DataFr
     moyenne = sum(tableaux) / len(tableaux)
     return moyenne.rename(index=NOMS_ETAPE_4, columns=NOMS_PRIX)
 
+
 # Étape 5 : hétérogénéité et robustesse
+
 
 # Classes officielles de l'indice Fear & Greed (alternative.me)
 CLASSES_FNG = {"Peur extrême\n(0-25)": 25, "Peur\n(26-46)": 46, "Neutre\n(47-54)": 54,

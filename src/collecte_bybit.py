@@ -88,9 +88,6 @@ def download_bybit(kind: str, symbol: str, start: str = DEBUT_DONNEES, end: str 
     Comme les réponses vont du plus récent au plus ancien, la boucle remonte le
     temps : après chaque page, la nouvelle fin est juste avant le point le plus ancien reçu.
     """
-    if kind not in BYBIT_KINDS:
-        raise ValueError(f"Type inconnu : {kind!r}. Types possibles : {list(BYBIT_KINDS)}")
-
     debut_ms = _to_ms(start)
     fin_ms = _to_ms(end) + 24 * UNE_HEURE_MS - 1  # END est inclus : jusqu'à 23:59:59.999
     lignes = []
@@ -108,11 +105,9 @@ def download_bybit(kind: str, symbol: str, start: str = DEBUT_DONNEES, end: str 
 def clean_bybit(lignes: list, kind: str) -> pd.DataFrame:
     """Met les lignes brutes (du texte) au format du projet : noms, types numériques, dates UTC."""
     if kind == "klines":
-        # Toutes les colonnes sont gardées : data/raw/ reste fidèle à la source, le tri se fait dans le panel
         df = pd.DataFrame(lignes, columns=BYBIT_KLINE_COLS)
         colonne_temps = "open_time"
     elif kind == "funding":
-        # La colonne symbol est retirée : la crypto est déjà dans le chemin du fichier
         df = pd.DataFrame(lignes, columns=["fundingRateTimestamp", "fundingRate"]).rename(
             columns={"fundingRateTimestamp": "calc_time", "fundingRate": "last_funding_rate"})
         colonne_temps = "calc_time"
@@ -146,7 +141,7 @@ def bybit_file(kind: str, symbol: str) -> Path:
 
 
 def save_bybit(df: pd.DataFrame, kind: str, symbol: str) -> None:
-    """Écrit la série en parquet, plus léger qu'un CSV et qui conserve les types."""
+    """Écrit la série en parquet."""
     fichier = bybit_file(kind, symbol)
     fichier.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(fichier, index=False)
