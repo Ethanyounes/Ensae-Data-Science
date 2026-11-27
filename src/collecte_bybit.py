@@ -62,10 +62,10 @@ def _requete_bybit(kind: str, symbol: str, debut_ms: int, fin_ms: int) -> list:
     """Envoie une seule requête à Bybit et renvoie la liste de points."""
     info = BYBIT_KINDS[kind]
     params = {
-        "category": "linear",  
+        "category": "linear",
         "symbol": symbol,
         "limit": info["limite"],
-        info["debut"]: debut_ms,  
+        info["debut"]: debut_ms,
         info["fin"]: fin_ms,
         **info["extra"],
     }
@@ -84,11 +84,11 @@ def download_bybit(kind: str, symbol: str, start: str = DEBUT_DONNEES, end: str 
     temps : après chaque page, la nouvelle fin est juste avant le point le plus ancien reçu.
     """
     debut_ms = _to_ms(start)
-    fin_ms = _to_ms(end) + 24 * UNE_HEURE_MS - 1  
+    fin_ms = _to_ms(end) + 24 * UNE_HEURE_MS - 1
     lignes = []
     while fin_ms >= debut_ms:
         page = fetch_bybit_page(kind, symbol, debut_ms, fin_ms)
-        if not page:  
+        if not page:
             break
         lignes.extend(page)
         fin_ms = _timestamp(page[-1], kind) - 1

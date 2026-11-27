@@ -46,7 +46,7 @@ def clean_metrics(df: pd.DataFrame) -> pd.DataFrame:
         ls_top_positions=("ls_top_positions", "mean"),
         ls_global=("ls_global", "mean"),
         taker_ratio=("taker_ratio", "mean"),
-        n_releves=("releve", "count"),  
+        n_releves=("releve", "count"),
     )
     horaire.index = horaire.index.as_unit("ms").rename("t")
     return horaire
@@ -69,7 +69,7 @@ def clean_funding(df: pd.DataFrame) -> pd.DataFrame:
     """Paiements de funding arrondis à l'heure, avec le taux ramené à une heure."""
     df = df.rename(columns={"calc_time": "t_funding", "last_funding_rate": "funding",
                             "funding_interval_hours": "funding_intervalle_h"})
-    df["t_funding"] = df["t_funding"].dt.round("h").dt.as_unit("ms")  
+    df["t_funding"] = df["t_funding"].dt.round("h").dt.as_unit("ms")
     df["funding_horaire"] = df["funding"] / df["funding_intervalle_h"]
     return df.drop_duplicates("t_funding").sort_values("t_funding")
 

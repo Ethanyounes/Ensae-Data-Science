@@ -16,7 +16,7 @@ if __name__ == "__main__":
             else:
                 try:
                     df = download_bybit(kind, symbol)
-                except RuntimeError as erreur:  
+                except RuntimeError as erreur:
                     print(f"{symbol:9} {kind:14} ignoré : {erreur}")
                     continue
                 save_bybit(df, kind, symbol)

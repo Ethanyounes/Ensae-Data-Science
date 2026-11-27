@@ -84,12 +84,12 @@ uv sync
 uv run python -m nbconvert --to notebook --execute --inplace rapport.ipynb
 ```
 
-Sans uv : `pip install -r requirements.txt`, puis ouvrir `rapport.ipynb` dans Jupyter. Le notebook lit les données sur le S3 et tourne en deux minutes environ.
+Sans uv : `pip install -r requirements.txt`, puis ouvrir `rapport.ipynb` dans Jupyter (déjà installé sur le SSPCloud ; ailleurs, `pip install jupyter`). Le notebook lit les données sur le S3 et tourne en trois minutes environ.
 
 Pour tout refaire depuis les sources (long car près de 16 000 archives Binance), mettre `RECONSTRUIRE = True` au début du notebook, ou lancer les scripts :
 
 ```bash
-uv run python -m scripts.choisir_cryptos       # facultatif, pour  retrouver la liste SYMBOLS de src/config.py (20 min)
+uv run python -m scripts.choisir_cryptos       # facultatif, pour retrouver la liste SYMBOLS de src/config.py (20 min)
 uv run python -m scripts.telecharger_binance   # archives Binance (relançable)
 uv run python -m scripts.telecharger_bybit     # séries Bybit
 uv run python -m scripts.telecharger_fng       # indice Fear & Greed
