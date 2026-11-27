@@ -564,14 +564,6 @@ def rendement_par_decile(panel: pd.DataFrame, variable: str) -> pd.DataFrame:
     return resultats.reset_index()
 
 
-def tableau_taux_par_decile(taux: pd.DataFrame) -> pd.DataFrame:
-    """Taux de squeeze (%) par crypto (lignes) et par décile (colonnes), avec une ligne pour l'ensemble."""
-    tableau = taux.pivot(index="symbol", columns="decile", values="taux_pct").reindex(columns=range(1, 11))
-    tableau = tableau.reindex([s for s in SYMBOLS if s in tableau.index])
-    tableau.loc["Ensemble"] = taux_ensemble(taux)
-    return tableau
-
-
 def taux_ensemble(taux: pd.DataFrame) -> pd.Series:
     """Taux de squeeze (%) par décile, toutes cryptos ensemble."""
     # Les déciles sont calculés crypto par crypto : chaque crypto pèse autant dans chaque décile
