@@ -7,10 +7,6 @@ sont des paramètres pour pouvoir tester les variantes.
 import numpy as np
 import pandas as pd
 
-from src.config import PROCESSED_DIR
-
-PANEL_CIBLE_FILE = PROCESSED_DIR / "panel_cible.parquet"
-
 # Valeurs de base. Les variantes du README changent un seul de ces paramètres.
 K_SIGMA = 3        # C1 : hausse d'au moins k écarts-types...
 PLANCHER = 0.05    # ... et d'au moins 5 %
@@ -29,7 +25,7 @@ def delai_du_pic(high: pd.Series, horizon: int) -> np.ndarray:
 def sigma_oi_30j(oi: pd.Series, horizon: int = HORIZON) -> pd.Series:
     """Écart-type des variations relatives de l'open interest sur `horizon` heures, sur les 30 derniers jours."""
     # Calculé directement sur l'horizon : σ horaire × √24 le sous-estime, car les variations d'OI se prolongent
-    return oi.pct_change(horizon, fill_method=None).rolling("30D").std()
+    return oi.pct_change(horizon).rolling("30D").std()
 
 
 def cible_crypto(crypto: pd.DataFrame, k: float = K_SIGMA, plancher: float = PLANCHER,

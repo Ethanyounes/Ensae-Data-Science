@@ -3,7 +3,7 @@
 import pandas as pd
 
 from src.collecte_bybit import bybit_file
-from src.config import INTERIM_DIR, nom_bybit
+from src.config import INTERIM_DIR
 from src.panel_binance import clean_funding, grille_horaire
 
 PANEL_BYBIT_FILE = INTERIM_DIR / "panel_bybit.parquet"
@@ -12,14 +12,9 @@ PANEL_FUSION_FILE = INTERIM_DIR / "panel_binance_bybit.parquet"
 
 def build_panel_bybit_crypto(symbol: str) -> pd.DataFrame:
     """Bougies, open interest et funding Bybit d'une crypto, sur la grille horaire."""
-    facteur = nom_bybit(symbol)[1]
-
     bougies = pd.read_parquet(bybit_file("klines", symbol))
     bougies["t"] = (bougies["open_time"] + pd.Timedelta("1h")).dt.as_unit("ms")
     bougies = bougies.drop(columns="open_time").drop_duplicates("t").set_index("t")
-    # Un contrat Bybit peut contenir facteur fois plus de crypto : on ramène à l'unité Binance
-    bougies[["open", "high", "low", "close"]] /= facteur
-    bougies["volume"] *= facteur
 
     # Relevé instantané, connu à son heure (vérifié en le comparant à l'open interest Binance).
     # single_open_interest compte un seul côté du marché, comme l'open interest de Binance.
@@ -27,7 +22,6 @@ def build_panel_bybit_crypto(symbol: str) -> pd.DataFrame:
     oi["t"] = oi["create_time"].dt.as_unit("ms")
     oi = oi.drop_duplicates("t").set_index("t")[["single_open_interest"]]
     oi = oi.rename(columns={"single_open_interest": "oi"})
-    oi["oi"] *= facteur
     # Un open interest nul ou négatif est impossible : erreur d'enregistrement (même règle que Binance)
     oi["oi"] = oi["oi"].mask(oi["oi"] <= 0)
 
@@ -51,10 +45,7 @@ def build_panel_bybit(symbols: list[str]) -> pd.DataFrame:
 
 
 def controles_bybit(panel: pd.DataFrame) -> pd.DataFrame:
-    """Nombre d'heures qui échouent à chaque contrôle de cohérence, par crypto.
-
-    Rien n'est corrigé ici : la fonction signale. 0 partout signifie des données saines.
-    """
+    """Nombre d'heures qui échouent à chaque contrôle de cohérence, par crypto (rien n'est corrigé)."""
     resultats = {}
     for symbol, crypto in panel.groupby("symbol"):
         hors_bornes = (crypto[["open", "close"]].max(axis=1) > crypto["high"]) | (
@@ -79,8 +70,7 @@ def controles_bybit(panel: pd.DataFrame) -> pd.DataFrame:
 def extremes_bybit(panel: pd.DataFrame) -> pd.DataFrame:
     """Plus fortes variations horaires et funding extrêmes par crypto, avec leur date.
 
-    Ces valeurs sont gardées dans le panel : ce sont de vrais événements de marché,
-    et un squeeze est justement un événement extrême. On les signale seulement.
+    Elles sont gardées dans le panel : ce sont de vrais événements de marché, comme un squeeze.
     """
     resultats = {}
     for symbol, crypto in panel.groupby("symbol"):
