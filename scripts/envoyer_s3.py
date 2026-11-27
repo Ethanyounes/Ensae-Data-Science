@@ -11,7 +11,7 @@ from src.stockage import chemin_s3, connexion_s3
 
 if __name__ == "__main__":
     s3 = connexion_s3()
-    deja_envoyes = {chemin.split("/", 3)[3] for chemin in s3.find(chemin_s3("raw"))}
+    deja_envoyes = {chemin.removeprefix(chemin_s3("")) for chemin in s3.find(chemin_s3("raw"))}
 
     a_envoyer = [f for f in sorted(RAW_DIR.rglob("*.parquet"))
                  if f.relative_to(DATA_DIR).as_posix() not in deja_envoyes]

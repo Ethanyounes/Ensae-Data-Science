@@ -88,7 +88,6 @@ def build_panel_crypto(symbol: str) -> pd.DataFrame:
     panel = pd.merge_asof(panel.reset_index(), funding, left_on="t", right_on="t_funding")
     panel = panel.set_index("t")
 
-    # Indice Fear & Greed : chaque heure t reçoit la valeur de la veille (voir src/panel_fng.py)
     panel = ajouter_fng(panel)
 
     panel.insert(0, "symbol", symbol)

@@ -56,22 +56,21 @@ def controles_bybit(panel: pd.DataFrame) -> pd.DataFrame:
     Rien n'est corrigé ici : la fonction signale. 0 partout signifie des données saines.
     """
     resultats = {}
-    for symbol, p in panel.groupby("symbol"):
-        # Bougie cohérente : l'ouverture et la clôture sont entre le plus bas et le plus haut
-        hors_bornes = (p[["open", "close"]].max(axis=1) > p["high"]) | (
-            p[["open", "close"]].min(axis=1) < p["low"])
+    for symbol, crypto in panel.groupby("symbol"):
+        hors_bornes = (crypto[["open", "close"]].max(axis=1) > crypto["high"]) | (
+            crypto[["open", "close"]].min(axis=1) < crypto["low"])
         # Open interest identique trois heures de suite : série probablement non mise à jour
-        inchange = p["oi"].diff().eq(0)
+        inchange = crypto["oi"].diff().eq(0)
         fige = inchange & inchange.shift(1, fill_value=False)
 
         resultats[symbol] = {
-            "heures": len(p),
-            "sans_bougie": p["close"].isna().sum(),
-            "sans_oi": p["oi"].isna().sum(),
-            "sans_funding": p["funding"].isna().sum(),
+            "heures": len(crypto),
+            "sans_bougie": crypto["close"].isna().sum(),
+            "sans_oi": crypto["oi"].isna().sum(),
+            "sans_funding": crypto["funding"].isna().sum(),
             "prix_hors_bornes": hors_bornes.sum(),
-            "prix_non_positif": (p["low"] <= 0).sum(),
-            "volume_nul": (p["volume"] == 0).sum(),
+            "prix_non_positif": (crypto["low"] <= 0).sum(),
+            "volume_nul": (crypto["volume"] == 0).sum(),
             "oi_fige_3h": fige.sum(),
         }
     return pd.DataFrame(resultats).T.astype("int64")
@@ -84,18 +83,17 @@ def extremes_bybit(panel: pd.DataFrame) -> pd.DataFrame:
     et un squeeze est justement un événement extrême. On les signale seulement.
     """
     resultats = {}
-    for symbol, p in panel.groupby("symbol"):
-        variation_oi = p["oi"].pct_change()
-        rendement = p["close"].pct_change()
+    for symbol, crypto in panel.groupby("symbol"):
+        variation_oi = crypto["oi"].pct_change()
+        rendement = crypto["close"].pct_change()
         resultats[symbol] = {
             "baisse_oi_max_pct": round(variation_oi.min() * 100, 1),
             "date_baisse_oi": variation_oi.idxmin(),
             "variation_prix_max_pct": round(rendement.abs().max() * 100, 1),
             "date_variation_prix": rendement.abs().idxmax(),
-            "funding_horaire_min": p["funding_horaire"].min(),
-            "funding_horaire_max": p["funding_horaire"].max(),
-            # Part des heures où le dernier funding connu est négatif (les shorts paient les longs)
-            "heures_funding_negatif_pct": round((p["funding"] < 0).mean() * 100, 1),
+            "funding_horaire_min": crypto["funding_horaire"].min(),
+            "funding_horaire_max": crypto["funding_horaire"].max(),
+            "heures_funding_negatif_pct": round((crypto["funding"] < 0).mean() * 100, 1),
         }
     return pd.DataFrame(resultats).T
 

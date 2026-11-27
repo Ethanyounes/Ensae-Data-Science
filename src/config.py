@@ -4,7 +4,7 @@ import os
 from datetime import date, timedelta
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parent.parent  # racine du dépôt, d'où que l'on lance le code
+ROOT_DIR = Path(__file__).resolve().parent.parent
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT_DIR / "data"))
 RAW_DIR = DATA_DIR / "raw"              # fichiers téléchargés, jamais modifiés

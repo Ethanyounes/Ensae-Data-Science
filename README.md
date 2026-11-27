@@ -66,7 +66,7 @@ src/
   panel_bybit.py       panel horaire Bybit, contrôles de cohérence et fusion avec le panel Binance
   panel_fng.py         nettoyage de l'indice Fear & Greed et rattachement au panel horaire
   cible.py             cible : conditions C1, C2, C3 et squeeze, seuils en paramètres
-  descriptif.py        statistiques et graphiques descriptifs (étapes 1 à 3)
+  descriptif.py        statistiques et graphiques descriptifs (étapes 1 à 5)
 scripts/
   choisir_cryptos.py       applique la règle de choix des cryptos (open interest de décembre 2022)
   telecharger_binance.py   télécharge toutes les archives Binance (SYMBOLS × types)
@@ -75,7 +75,6 @@ scripts/
   construire_panel.py      construit les panels Binance, Bybit et leur fusion, et affiche manquants et contrôles
   envoyer_s3.py            dépose les données brutes manquantes et les panels sur le S3 du SSPCloud
   indicateur_shortsqueeze.py  calcule la cible et enregistre data/processed/panel_cible.parquet
-  descriptif.ipynb         exploration des premiers squeezes (brouillon de l'étape 3)
 data/
   raw/binance/{metrics,fundingRate,klines,premiumIndexKlines,spot_klines}/<SYMBOLE>/*.parquet
   raw/bybit/{funding,open_interest,klines}/<SYMBOLE>/<SYMBOLE>-<série>.parquet

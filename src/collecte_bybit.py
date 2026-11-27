@@ -14,11 +14,8 @@ import requests
 
 from src.config import BYBIT_BASE_URL, DEBUT_DONNEES, END, raw_path
 
-# Description de chaque série Bybit :
-#   chemin : point d'accès de l'API
-#   limite : nombre maximal de points par requête (fixé par Bybit)
-#   debut, fin : noms des paramètres de dates (ils diffèrent selon le point d'accès)
-#   extra  : paramètres propres à la série
+# limite : nombre maximal de points par requête, fixé par Bybit ;
+# debut et fin : noms des paramètres de dates, qui diffèrent d'un point d'accès à l'autre
 BYBIT_KINDS = {
     "funding": {"chemin": "/v5/market/funding/history", "limite": 200,
                 "debut": "startTime", "fin": "endTime", "extra": {}},
@@ -29,29 +26,21 @@ BYBIT_KINDS = {
                "debut": "start", "fin": "end", "extra": {"interval": "60"}},
 }
 
-# Les bougies arrivent sous forme de listes sans noms : ordre donné par la doc Bybit.
-# Noms alignés sur ceux de Binance pour réutiliser le même code de panel.
+# Les bougies arrivent en listes sans noms (ordre de la doc Bybit) ; noms repris de Binance pour le panel
 BYBIT_KLINE_COLS = ["open_time", "open", "high", "low", "close", "volume", "quote_volume"]
 
 UNE_HEURE_MS = 3600 * 1000
 
 
 def _to_ms(date: str) -> int:
-    """Date "AAAA-MM-JJ" (UTC) -> millisecondes depuis 1970, le format de Bybit.
-
-    L'API Bybit attend un nombre de millisecondes depuis le 1er janvier 1970, et non une date.
-    """
+    """Date "AAAA-MM-JJ" (UTC) -> millisecondes depuis 1970, le format de Bybit."""
     return int(pd.Timestamp(date, tz="UTC").timestamp() * 1000)
 
 
 def _timestamp(ligne, kind: str) -> int:
-    """Horodatage (ms) d'une ligne brute renvoyée par Bybit.
-
-    Bybit ne place pas la date au même endroit selon la série : cette fonction la
-    récupère sous forme d'entier quel que soit le format.
-    """
+    """Horodatage (ms) d'une ligne brute renvoyée par Bybit, qui ne le place pas au même endroit selon la série."""
     if kind == "klines":
-        return int(ligne[0])  # première valeur de la liste
+        return int(ligne[0])
     if kind == "funding":
         return int(ligne["fundingRateTimestamp"])
     return int(ligne["timestamp"])
@@ -70,7 +59,7 @@ def fetch_bybit_page(kind: str, symbol: str, debut_ms: int, fin_ms: int,
         except (requests.RequestException, RuntimeError):
             if essai == essais:
                 raise
-            time.sleep(2 ** essai)  # 2, 4, 8, 16 s
+            time.sleep(2 ** essai)
 
 
 def _requete_bybit(kind: str, symbol: str, debut_ms: int, fin_ms: int) -> list:
@@ -110,20 +99,16 @@ def download_bybit(kind: str, symbol: str, start: str = DEBUT_DONNEES, end: str 
         if not page:  # plus rien avant : contrat pas encore coté
             break
         lignes.extend(page)
-        fin_ms = _timestamp(page[-1], kind) - 1  # page[-1] est le point le plus ancien
+        fin_ms = _timestamp(page[-1], kind) - 1
         time.sleep(0.1)  # rester loin de la limite de requêtes de Bybit
 
     return clean_bybit(lignes, kind)
 
 
 def clean_bybit(lignes: list, kind: str) -> pd.DataFrame:
-    """Met les lignes brutes au format du projet : noms, types numériques, dates UTC.
-
-    Ce qui arrive de Bybit est une liste de textes : on la convertit en tableau pandas.
-    """
+    """Met les lignes brutes (du texte) au format du projet : noms, types numériques, dates UTC."""
     if kind == "klines":
-        # Toutes les colonnes sont gardées : data/raw/ reste fidèle à la source,
-        # le tri se fera dans le panel
+        # Toutes les colonnes sont gardées : data/raw/ reste fidèle à la source, le tri se fait dans le panel
         df = pd.DataFrame(lignes, columns=BYBIT_KLINE_COLS)
         colonne_temps = "open_time"
     elif kind == "funding":
@@ -141,7 +126,6 @@ def clean_bybit(lignes: list, kind: str) -> pd.DataFrame:
     if df.empty:
         return df
 
-    # Bybit renvoie tout en texte : conversion en nombres, et des ms en dates UTC
     for col in df.columns.drop(colonne_temps):
         df[col] = pd.to_numeric(df[col])
     df[colonne_temps] = pd.to_datetime(df[colonne_temps].astype("int64"), unit="ms", utc=True)
@@ -150,8 +134,7 @@ def clean_bybit(lignes: list, kind: str) -> pd.DataFrame:
     df = df.drop_duplicates(colonne_temps).sort_values(colonne_temps).reset_index(drop=True)
 
     if kind == "funding":
-        # Intervalle entre deux paiements (8, 4 ou 1 h), pour ramener le taux en horaire.
-        # Le premier paiement n'a pas de précédent : on lui donne l'intervalle suivant.
+        # Intervalle entre deux paiements (8, 4 ou 1 h) ; le premier paiement prend celui du suivant
         ecart = df["calc_time"].diff().dt.total_seconds() / 3600
         df["funding_interval_hours"] = ecart.round().bfill().astype("int64")
     return df
@@ -163,10 +146,7 @@ def bybit_file(kind: str, symbol: str) -> Path:
 
 
 def save_bybit(df: pd.DataFrame, kind: str, symbol: str) -> None:
-    """Écrit la série en parquet (le dossier est créé si besoin).
-
-    Le parquet est plus léger qu'un CSV et conserve les types d'une lecture à l'autre.
-    """
+    """Écrit la série en parquet, plus léger qu'un CSV et qui conserve les types."""
     fichier = bybit_file(kind, symbol)
     fichier.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(fichier, index=False)

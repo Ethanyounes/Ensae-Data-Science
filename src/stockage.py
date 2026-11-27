@@ -21,11 +21,6 @@ def chemin_s3(chemin_relatif: str) -> str:
     return f"{S3_BUCKET}/{S3_PREFIX}/{chemin_relatif}"
 
 
-def envoyer(chemin_local: Path, chemin_relatif: str) -> None:
-    """Envoie un fichier ou un dossier entier sur le S3."""
-    connexion_s3().put(str(chemin_local), chemin_s3(chemin_relatif), recursive=Path(chemin_local).is_dir())
-
-
 def lire_public(chemin_relatif: str) -> pd.DataFrame:
     """Lit un parquet du S3 sans identifiants, par exemple lire_public("interim/panel.parquet")."""
     return pd.read_parquet(f"{S3_PUBLIC_URL}/{chemin_relatif}")

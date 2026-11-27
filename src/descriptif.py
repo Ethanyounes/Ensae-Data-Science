@@ -234,7 +234,6 @@ def graphique_correlations(variables: pd.DataFrame) -> None:
         for i in range(len(correlations)):
             for j in range(len(correlations)):
                 valeur = correlations.iloc[i, j]
-                # Texte blanc sur les cases foncées, sinon il ne se lit pas
                 ax.text(j, i, f"{valeur:.2f}", ha="center", va="center", fontsize=8,
                         color="white" if abs(valeur) > 0.6 else "black")
         ax.set_xticks(range(len(libelles)), libelles, rotation=45, ha="right")
@@ -272,7 +271,6 @@ def persistance(variables: pd.DataFrame) -> pd.DataFrame:
 
 # Étape 3 : la cible
 
-# Chaque variante change un seul seuil de la cible de base (voir src/cible.py)
 VARIANTES = {
     "Base": {},
     "k = 2,5": {"k": 2.5},
@@ -295,9 +293,10 @@ def tableau_episodes(panel_cible: pd.DataFrame, horizon: int = HORIZON) -> pd.Da
     positives = panel_cible[panel_cible["shortsqueeze"].fillna(False)].reset_index()
     nouvel_episode = (positives["symbol"] != positives["symbol"].shift()) | \
                      (positives["t"].diff() >= pd.Timedelta(hours=horizon))
-    groupes = positives.groupby(nouvel_episode.cumsum())
+    positives["episode"] = nouvel_episode.cumsum()
+    groupes = positives.groupby("episode")
 
-    plus_forte_hausse = positives.loc[groupes["hausse_pic"].idxmax()].set_index(groupes.size().index)
+    plus_forte_hausse = positives.loc[groupes["hausse_pic"].idxmax()].set_index("episode")
     episodes_cible = pd.DataFrame({
         "symbol": plus_forte_hausse["symbol"],
         "debut": groupes["t"].first(),
@@ -324,7 +323,6 @@ def frequence_cible(panel_cible: pd.DataFrame, episodes_cible: pd.DataFrame) -> 
     total = frequence.groupby("symbol").sum()
     total.index = pd.MultiIndex.from_product([total.index, ["Total"]], names=["symbol", "année"])
     frequence = pd.concat([frequence, total]).sort_index().astype("int64")
-    # Part des heures positives : c'est la précision d'un modèle qui prédirait au hasard (base naïve de la PR-AUC)
     frequence["part_positive_pct"] = 100 * frequence["heures_positives"] / frequence["heures"]
     return frequence
 
@@ -395,12 +393,13 @@ def simultaneite(panel_cible: pd.DataFrame) -> pd.DataFrame:
     """Parmi les heures positives d'une crypto (ligne), part (en %) où une autre crypto (colonne) l'est aussi."""
     positives = (panel_cible.reset_index()
                  .pivot(index="t", columns="symbol", values="shortsqueeze")
-                 .fillna(False).astype("int64"))
-    ensemble = positives.T @ positives  # nombre d'heures positives en même temps, pour chaque paire
-    parts = 100 * ensemble.div(np.diag(ensemble), axis=0)
-    au_moins_une_autre = positives.sum(axis=1) >= 2
-    parts["Au moins une autre"] = [100 * au_moins_une_autre[positives[s] == 1].mean() for s in positives]
-    return parts
+                 .fillna(False).astype(bool))
+    lignes = {}
+    for symbole in positives:
+        heures_positives = positives[positives[symbole]]
+        lignes[symbole] = 100 * heures_positives.mean()
+        lignes[symbole]["Au moins une autre"] = 100 * (heures_positives.sum(axis=1) >= 2).mean()
+    return pd.DataFrame(lignes).T.rename_axis("symbol")
 
 
 def profil_episodes(episodes_cible: pd.DataFrame) -> pd.DataFrame:
@@ -421,7 +420,7 @@ def seuils_baisse_oi(panel_cible: pd.DataFrame) -> pd.DataFrame:
     lignes = {}
     for symbole, crypto in panel_cible.groupby("symbol"):
         reduite = variation_oi_reduite(crypto).dropna()
-        baisse_au_pic = -crypto["variation_oi"]  # de t au pic, ce que teste C2
+        baisse_au_pic = -crypto["variation_oi"]
         lignes[symbole] = {
             "Kurtosis (excès)": reduite.kurt(),
             "Sous −1,5 σ (%)": (reduite <= -1.5).mean() * 100,
@@ -478,7 +477,7 @@ def graphique_exemples(panel_cible: pd.DataFrame, exemples: list[tuple[str, str]
     fig.tight_layout()
     plt.show()
 
-# étape 4 : positionnement et squeezes, première réponse à H1/H2
+# Étape 4 : positionnement et squeezes, première réponse à H1/H2
 
 NOMS_ETAPE_4 = {
     "funding_8h": "Funding (% par 8 h)",
@@ -529,11 +528,12 @@ def evenements_de_marche(episodes_cible: pd.DataFrame) -> pd.DataFrame:
 
 
 def numero_decile(valeurs: pd.Series) -> pd.Series:
-    """Décile (1 à 10) de chaque valeur. Les ex-aequo restent ensemble : un décile peut être vide ou plus gros."""
-    decile = pd.Series(10, index=valeurs.index)
-    for d in range(9, 0, -1):
-        decile[valeurs <= valeurs.quantile(d / 10)] = d
-    return decile
+    """Décile (1 à 10) de chaque valeur : 1 + nombre de bornes de décile qu'elle dépasse.
+
+    Les ex-aequo restent ensemble : un décile peut être vide ou plus gros.
+    """
+    bornes = valeurs.quantile([d / 10 for d in range(1, 10)])
+    return 1 + sum(valeurs > borne for borne in bornes)
 
 
 def taux_squeeze_par_decile(panel: pd.DataFrame, variable: str) -> pd.DataFrame:
@@ -600,7 +600,6 @@ def graphique_rendement_par_decile(rendements: pd.DataFrame, nom_variable: str) 
         ax.set_xlabel(f"Décile de {nom_variable}")
     for ax in axes[:, 0]:
         ax.set_ylabel("Rendement à 24 h (%)")
-    # Une seule légende sous le titre, pour ne cacher aucune courbe
     fig.legend(*axes[0, 0].get_legend_handles_labels(), loc="upper center", ncols=3, bbox_to_anchor=(0.5, 0.96))
     fig.suptitle(f"Rendement des 24 h suivantes selon {nom_variable}")
     fig.tight_layout(rect=(0, 0, 1, 0.93))
@@ -656,6 +655,12 @@ def episodes_sur_bybit(fusion: pd.DataFrame, episodes_cible: pd.DataFrame) -> pd
 TIRAGES_BOOTSTRAP = 2000
 
 
+def reprises_bootstrap(nb_semaines: int) -> np.ndarray:
+    """Une ligne par tirage : nombre de fois que chaque semaine est reprise quand on en tire nb_semaines avec remise."""
+    return np.random.default_rng(0).multinomial(nb_semaines, np.full(nb_semaines, 1 / nb_semaines),
+                                                size=TIRAGES_BOOTSTRAP)
+
+
 def intervalle_bootstrap(semaines: pd.PeriodIndex, avec: np.ndarray, sans: np.ndarray,
                          positif: np.ndarray) -> np.ndarray:
     """Intervalle à 95 % du rapport des taux de squeeze avec et sans signal, en tirant des semaines entières.
@@ -666,10 +671,8 @@ def intervalle_bootstrap(semaines: pd.PeriodIndex, avec: np.ndarray, sans: np.nd
     comptes = pd.DataFrame({"heures_avec": avec, "squeezes_avec": avec & positif,
                             "heures_sans": sans, "squeezes_sans": sans & positif}).groupby(semaines).sum()
     comptes = comptes[comptes["heures_avec"] + comptes["heures_sans"] > 0].to_numpy()
-    # Un tirage dit combien de fois chaque semaine est reprise : il suffit d'additionner leurs comptes
-    reprises = np.random.default_rng(0).multinomial(len(comptes), np.full(len(comptes), 1 / len(comptes)),
-                                                     size=TIRAGES_BOOTSTRAP)
-    heures_avec, squeezes_avec, heures_sans, squeezes_sans = (reprises @ comptes).T
+    totaux_des_tirages = reprises_bootstrap(len(comptes)) @ comptes
+    heures_avec, squeezes_avec, heures_sans, squeezes_sans = totaux_des_tirages.T
     with np.errstate(divide="ignore", invalid="ignore"):
         rapports = (squeezes_avec / heures_avec) / (squeezes_sans / heures_sans)
     # Sans squeeze hors signal, le rapport est infini (gardé) ; sans heure avec signal, il n'existe pas (écarté)
@@ -717,7 +720,7 @@ def fenetre_autour_du_pic(crypto: pd.DataFrame, pic: pd.Timestamp) -> pd.DataFra
 
 def etude_evenement(panel_complet: pd.DataFrame, groupes: dict) -> pd.DataFrame:
     """Moyenne de chaque variable heure par heure autour des pics, pour chaque groupe (colonnes : groupe, variable)."""
-    cryptos = dict(tuple(panel_complet.groupby("symbol")))
+    cryptos = {symbole: crypto for symbole, crypto in panel_complet.groupby("symbol")}
     profils = {}
     for nom, pics in groupes.items():
         fenetres = [fenetre_autour_du_pic(cryptos[s], p) for s, p in zip(pics["symbol"], pics["date_pic"])]
@@ -731,16 +734,14 @@ def bande_etude_evenement(panel_complet: pd.DataFrame, pics: pd.DataFrame) -> pd
     Les squeezes simultanés de plusieurs cryptos tombent la même semaine : ils sont tirés ensemble.
     Lignes : "bas" et "haut" ; colonnes : (variable, heure depuis le pic).
     """
-    cryptos = dict(tuple(panel_complet.groupby("symbol")))
+    cryptos = {symbole: crypto for symbole, crypto in panel_complet.groupby("symbol")}
     fenetres = pd.concat([fenetre_autour_du_pic(cryptos[s], p) for s, p in zip(pics["symbol"], pics["date_pic"])],
                          keys=range(len(pics)))  # index : (numéro de l'épisode, heure depuis le pic)
     episode, heure = fenetres.index.get_level_values(0), fenetres.index.get_level_values(1)
     semaine = semaine_de_la_bougie(pics.set_index("date_pic"))[episode]
-    # Par semaine : somme et nombre de valeurs connues, pour chaque variable et chaque heure
     sommes = fenetres.groupby([semaine, heure]).sum().unstack()
     nombres = fenetres.notna().groupby([semaine, heure]).sum().unstack()
-    reprises = np.random.default_rng(0).multinomial(len(sommes), np.full(len(sommes), 1 / len(sommes)),
-                                                     size=TIRAGES_BOOTSTRAP)
+    reprises = reprises_bootstrap(len(sommes))
     with np.errstate(invalid="ignore"):
         moyennes = (reprises @ sommes.to_numpy()) / (reprises @ nombres.to_numpy())
     return pd.DataFrame(np.nanpercentile(moyennes, [2.5, 97.5], axis=0), index=["bas", "haut"], columns=sommes.columns)
@@ -856,30 +857,27 @@ CLASSES_FNG = {"Peur extrême\n(0-25)": 25, "Peur\n(26-46)": 46, "Neutre\n(47-54
                "Avidité\n(55-75)": 75, "Avidité extrême\n(76-100)": 100}
 
 
-def decile_par_crypto(panel: pd.DataFrame, variable: str, par_periode: bool = False) -> np.ndarray:
+def decile_par_crypto(panel: pd.DataFrame, variable: str, par_periode: bool = False) -> pd.Series:
     """Décile (1 à 10) de la variable, calculé crypto par crypto (et période par période si demandé) ; NaN si elle manque."""
-    donnees = panel[["symbol", variable]].reset_index()  # index unique : les heures t se répètent d'une crypto à l'autre
-    donnees = donnees[donnees[variable].notna()]
-    groupes = [donnees["symbol"]]
+    groupes = [panel["symbol"]]
     if par_periode:
-        groupes.append((donnees["t"] - pd.Timedelta("1h")).dt.year <= 2024)  # 2023-2024 ou 2025-2026
-    decile = pd.Series(np.nan, index=range(len(panel)))
-    decile[donnees.index] = donnees.groupby(groupes)[variable].transform(numero_decile)
-    return decile.to_numpy()
+        en_2023_2024 = (panel.index - pd.Timedelta("1h")).year <= 2024
+        groupes.append(en_2023_2024)
+    deciles = panel.groupby(groupes)[variable].transform(numero_decile)
+    return deciles.where(panel[variable].notna())
 
 
 def signaux_h2(panel_variables: pd.DataFrame, par_periode: bool = False) -> pd.DataFrame:
     """Les trois signaux de H2 retenus à l'étape 4, vrais ou faux à chaque heure (NA si la variable manque)."""
     decile_ls = decile_par_crypto(panel_variables, "ls_top_positions", par_periode)
     decile_oi = decile_par_crypto(panel_variables, "variation_oi_24h", par_periode)
-    funding = panel_variables["funding_8h"].to_numpy()
-    noms = ["Gros traders placés à la baisse\n(ratio en positions, déciles 1-2)", "Funding négatif",
-            "Forte hausse de l'open interest\n(sur 24 h, déciles 9-10)"]
-    signaux = pd.DataFrame(dict(zip(noms, [decile_ls <= 2, funding < 0, decile_oi >= 9])),
-                           index=panel_variables.index).astype("boolean")
-    manquants = pd.DataFrame(dict(zip(noms, [np.isnan(decile_ls), np.isnan(funding), np.isnan(decile_oi)])),
-                             index=panel_variables.index)
-    return signaux.mask(manquants)
+    funding = panel_variables["funding_8h"]
+    signaux = pd.DataFrame({
+        "Gros traders placés à la baisse\n(ratio en positions, déciles 1-2)": (decile_ls <= 2).where(decile_ls.notna()),
+        "Funding négatif": (funding < 0).where(funding.notna()),
+        "Forte hausse de l'open interest\n(sur 24 h, déciles 9-10)": (decile_oi >= 9).where(decile_oi.notna()),
+    })
+    return signaux.astype("boolean")
 
 
 def groupes_etape_5(symboles: pd.Series, dates) -> dict:
@@ -970,7 +968,6 @@ def graphique_effet_des_signaux(effets: pd.DataFrame) -> None:
     ax.set_title("Les signaux de H2 tiennent-ils pour toutes les cryptos et toutes les périodes ?\n"
                  "Points : rapport des taux ; traits : intervalle de confiance à 95 % ; tirets : aucun effet")
     ax.grid(axis="y", alpha=0.3)
-    # Légende sous le graphique : les intervalles montent trop haut pour en laisser une place libre
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncols=4, frameon=False)
     fig.tight_layout()
     plt.show()
@@ -1039,26 +1036,28 @@ def sans_c3(panel_cible_complet: pd.DataFrame) -> pd.DataFrame:
     return panel_cible_complet.assign(shortsqueeze=panel_cible_complet["c1"] & panel_cible_complet["c2"])
 
 
+def episodes_retrouves(episodes: pd.DataFrame, autres: pd.DataFrame) -> pd.DataFrame:
+    """Pic de chaque épisode, avec retrouve vrai si l'autre plateforme a un pic de la même crypto à moins de 24 h."""
+    pics = episodes[["symbol", "date_pic"]].sort_values("date_pic")
+    pics_autres = autres[["symbol", "date_pic"]].rename(columns={"date_pic": "pic_autre"}).sort_values("pic_autre")
+    proches = pd.merge_asof(pics, pics_autres, left_on="date_pic", right_on="pic_autre", by="symbol",
+                            direction="nearest", tolerance=pd.Timedelta(hours=HORIZON))
+    return proches.assign(retrouve=proches["pic_autre"].notna())
+
+
 def accord_binance_bybit(episodes_binance: pd.DataFrame, episodes_bybit: pd.DataFrame) -> pd.DataFrame:
     """Par crypto : épisodes sur chaque plateforme, et part de ceux qui ont un épisode à moins de 24 h sur l'autre."""
-    def retrouves(episodes, autres):
-        gauche = episodes[["symbol", "date_pic"]].sort_values("date_pic")
-        droite = autres[["symbol", "date_pic"]].rename(columns={"date_pic": "pic_autre"}).sort_values("pic_autre")
-        proches = pd.merge_asof(gauche, droite, left_on="date_pic", right_on="pic_autre", by="symbol",
-                                direction="nearest", tolerance=pd.Timedelta(hours=HORIZON))
-        return proches["pic_autre"].notna().groupby(proches["symbol"])
-
-    binance, bybit = retrouves(episodes_binance, episodes_bybit), retrouves(episodes_bybit, episodes_binance)
+    binance = episodes_retrouves(episodes_binance, episodes_bybit)
+    bybit = episodes_retrouves(episodes_bybit, episodes_binance)
     tableau = pd.DataFrame({
-        "episodes_binance": binance.size(),
-        "episodes_bybit": bybit.size(),
-        "binance_retrouves_sur_bybit_pct": 100 * binance.mean(),
-        "bybit_retrouves_sur_binance_pct": 100 * bybit.mean(),
+        "episodes_binance": binance.groupby("symbol").size(),
+        "episodes_bybit": bybit.groupby("symbol").size(),
+        "binance_retrouves_sur_bybit_pct": 100 * binance.groupby("symbol")["retrouve"].mean(),
+        "bybit_retrouves_sur_binance_pct": 100 * bybit.groupby("symbol")["retrouve"].mean(),
     })
     tableau = tableau.reindex([s for s in SYMBOLS if s in tableau.index])
-    tableau.loc["Ensemble"] = [binance.size().sum(), bybit.size().sum(),
-                               100 * binance.sum().sum() / binance.size().sum(),
-                               100 * bybit.sum().sum() / bybit.size().sum()]
+    tableau.loc["Ensemble"] = [len(binance), len(bybit),
+                               100 * binance["retrouve"].mean(), 100 * bybit["retrouve"].mean()]
     return tableau
 
 

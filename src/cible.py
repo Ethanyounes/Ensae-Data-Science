@@ -6,7 +6,6 @@ sont des paramètres pour pouvoir tester les variantes.
 
 import numpy as np
 import pandas as pd
-from numpy.lib.stride_tricks import sliding_window_view
 
 from src.config import PROCESSED_DIR
 
@@ -21,11 +20,9 @@ HORIZON = 24       # en heures
 
 def delai_du_pic(high: pd.Series, horizon: int) -> np.ndarray:
     """Nombre d'heures entre t et le plus haut des `horizon` heures suivantes (NaN en fin de série)."""
-    n = len(high)
-    delai = np.full(n, np.nan)
-    # Fenêtre i : lignes i à i+horizon-1. La fenêtre i+1 couvre donc les heures t+1h à t+horizon de la ligne i.
-    fenetres = sliding_window_view(high.fillna(-np.inf).to_numpy(), horizon)
-    delai[: n - horizon] = fenetres[1:].argmax(axis=1) + 1
+    high_futurs = pd.DataFrame({h: high.shift(-h) for h in range(1, horizon + 1)})
+    delai = high_futurs.fillna(-np.inf).idxmax(axis=1).to_numpy(dtype=float)
+    delai[-horizon:] = np.nan
     return delai
 
 
@@ -44,10 +41,10 @@ def cible_crypto(crypto: pd.DataFrame, k: float = K_SIGMA, plancher: float = PLA
     """
     close = crypto["close"]
     rendements = np.log(close / close.shift(1))
-    sigma_30j = rendements.rolling("30D").std()  # rendements horaires de t-30j (exclu) à t
+    sigma_30j = rendements.rolling("30D").std()
 
     delai = delai_du_pic(crypto["high"], horizon)
-    connue = ~np.isnan(delai)  # les dernières heures de la série n'ont pas assez de futur
+    connue = ~np.isnan(delai)
     # Numéro de ligne du pic (la ligne t elle-même quand le pic est inconnu, masquée plus bas)
     ligne_pic = np.arange(len(crypto)) + np.where(connue, delai, 0).astype(int)
 
@@ -68,7 +65,6 @@ def cible_crypto(crypto: pd.DataFrame, k: float = K_SIGMA, plancher: float = PLA
         "variation_oi": variation_oi.where(connue),
         "ratio_achats_ventes": ratio_achats_ventes.where(connue),
     })
-    # La volatilité est ramenée à l'horizon : σ horaire × √horizon
     cible["c1"] = cible["hausse_pic"] >= np.maximum(k * sigma_30j * np.sqrt(horizon), plancher)
     baisse_oi_exigee = delta if delta_sigma is None else delta_sigma * cible["sigma_oi_30j"]
     cible["c2"] = cible["variation_oi"] <= -baisse_oi_exigee
@@ -86,23 +82,3 @@ def ajouter_cible(panel: pd.DataFrame, k: float = K_SIGMA, plancher: float = PLA
     """Panel complété des colonnes de la cible, calculées crypto par crypto."""
     return pd.concat([crypto.join(cible_crypto(crypto, k, plancher, delta, horizon, delta_sigma))
                       for _, crypto in panel.groupby("symbol")])
-
-
-def episodes(l: list):
-    """
-    Identifie les épisodes de shortsquizzs consécutifs dans une liste de timestamps.
-    Un épisode est une suite d'heures positives consécutives.
-    """
-    if len(l) == 0:
-        return []
-    longueur = len(l)
-    j = 1
-    res = []
-    for i in range(1, longueur):
-        if l[i] == l[i-1] + pd.Timedelta(hours=1):
-            j += 1
-        else:
-            res.append((l[i-1] - pd.Timedelta(hours=j-1), j))
-            j = 1
-    res.append((l[-1] - pd.Timedelta(hours=j-1), j))
-    return res
