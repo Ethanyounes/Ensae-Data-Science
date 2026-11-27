@@ -1,6 +1,6 @@
 """Envoi des données sur le S3 du SSPCloud et lecture publique.
 
-L'envoi demande les identifiants du fichier .env : uv run --env-file .env python 
+L'envoi demande les identifiants du fichier .env : uv run --env-file .env python
 """
 
 from pathlib import Path

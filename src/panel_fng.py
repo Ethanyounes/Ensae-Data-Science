@@ -13,7 +13,7 @@ def clean_fng(df: pd.DataFrame) -> pd.DataFrame:
     La valeur du jour J est publiée vers minuit, sans garantie qu'elle soit connue à 00:00 :
     on ne l'utilise qu'à partir de J+1 00:00.
     """
-   
+
     df = df[["date", "fng"]].rename(columns={"date": "fng_date"})
     df["fng_date"] = df["fng_date"].dt.as_unit("ms")
     df["fng"] = df["fng"].where(df["fng"].between(0, 100))

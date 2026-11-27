@@ -882,7 +882,7 @@ def signaux_h2(panel_variables: pd.DataFrame, par_periode: bool = False) -> pd.D
 
 def groupes_etape_5(symboles: pd.Series, dates) -> dict:
     """Masques des quatre groupes comparés : grosses ou petites cryptos, 2023-2024 ou 2025-2026."""
-    annee = (pd.DatetimeIndex(dates) - pd.Timedelta("1h")).year  
+    annee = (pd.DatetimeIndex(dates) - pd.Timedelta("1h")).year
     trois_grosses = symboles.isin(SYMBOLS_DESCRIPTIF).to_numpy()
     return {"BTC, ETH, SOL": trois_grosses, "7 autres cryptos": ~trois_grosses,
             "2023-2024": np.asarray(annee <= 2024), "2025-2026": np.asarray(annee >= 2025)}
@@ -959,7 +959,7 @@ def graphique_effet_des_signaux(effets: pd.DataFrame) -> None:
             ax.annotate(f"{rapport:.1f}", (position, rapport), xytext=(7, 0), textcoords="offset points",
                         va="center", fontsize=8)
     ax.axhline(1, color="black", linestyle="--", linewidth=1)
-    
+
     ax.set_yscale("log")
     ax.minorticks_off()
     graduations = [0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32]
